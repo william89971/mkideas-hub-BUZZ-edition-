@@ -10,8 +10,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/directional_transition_scope.dart';
 import '../../shared/widgets/mobile_tab_footer_backdrop.dart';
-import '../activity/activity_page.dart';
 import '../channels/channels_page.dart';
+import '../mkideas/mk_people_page.dart';
+import '../mkideas/mk_studio_page.dart';
+import '../mkideas/mk_today_page.dart';
+import '../mkideas/mk_work_page.dart';
 import '../search/search_page.dart';
 
 class HomePage extends HookConsumerWidget {
@@ -24,15 +27,15 @@ class HomePage extends HookConsumerWidget {
   final WidgetBuilder settingsPageBuilder;
   final bool hasUnreadInbox;
 
-  static const double _tabBarHeight = mobileTabBarHeight;
+  static const double _tabBarHeight = 64;
   static const double _tabBarRadius = _tabBarHeight / 2;
   static const double _tabBarInnerInset = Grid.half;
   static const double _selectedTabRadius =
       (_tabBarHeight - (_tabBarInnerInset * 2)) / 2;
   static const double _tabBarBottomGap = mobileTabBarBottomGap;
   static const double _tabBarHorizontalMargin = Grid.gutter;
-  static const double _tabDestinationHorizontalPadding = Grid.sm;
-  static const double _tabIconSize = 22;
+  static const double _tabDestinationHorizontalPadding = Grid.xxs;
+  static const double _tabIconSize = 18;
   static const double _fabClearance = _tabBarHeight + _tabBarBottomGap;
   static const Duration _tabIconWeightDuration = Duration(milliseconds: 120);
   static const Duration _tabUnreadBadgeDuration = Duration(milliseconds: 220);
@@ -47,24 +50,33 @@ class HomePage extends HookConsumerWidget {
     _HomeDestination(
       icon: LucideIcons.house300,
       selectedIcon: LucideIcons.house500,
-      label: 'Home',
+      label: 'Today',
     ),
     _HomeDestination(
       icon: LucideIcons.inbox300,
       selectedIcon: LucideIcons.inbox500,
-      label: 'Activity',
+      label: 'Work',
     ),
     _HomeDestination(
-      icon: LucideIcons.search300,
-      selectedIcon: LucideIcons.search500,
-      label: 'Search',
+      icon: LucideIcons.users,
+      selectedIcon: LucideIcons.users,
+      label: 'People',
+    ),
+    _HomeDestination(
+      icon: LucideIcons.video,
+      selectedIcon: LucideIcons.video,
+      label: 'Studio',
+    ),
+    _HomeDestination(
+      icon: LucideIcons.messageSquare,
+      selectedIcon: LucideIcons.messageSquare,
+      label: 'Team',
     ),
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tabIndex = useState(0);
-    final visitedTabs = useRef(<int>{0});
     final tabContentTransitionDirection = useRef(1.0);
     final tabContentTransitionController = useAnimationController(
       duration: _tabContentTransitionDuration,
@@ -73,9 +85,8 @@ class HomePage extends HookConsumerWidget {
     final tabContentTransitionValue = useAnimation(
       tabContentTransitionController,
     );
-    final homeReselection = useValueNotifier(0);
-    final activityReselection = useValueNotifier(0);
     final searchReselection = useValueNotifier(0);
+    final teamReselection = useValueNotifier(0);
     final settingsTransitionProgress = useValueNotifier(0.0);
     final reducedMotion = MediaQuery.of(context).disableAnimations;
     final tabContentTransitionProgress = reducedMotion
@@ -87,27 +98,31 @@ class HomePage extends HookConsumerWidget {
       _destinations.length,
     );
 
+    void openSearch() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SearchPage(tabReselection: searchReselection),
+        ),
+      );
+    }
+
     final pages = [
+      MkTodayPage(onSearch: openSearch),
+      MkWorkPage(onSearch: openSearch),
+      MkPeoplePage(onSearch: openSearch),
+      MkStudioPage(onSearch: openSearch),
       ChannelsPage(
         settingsPageBuilder: settingsPageBuilder,
-        tabReselection: homeReselection,
+        tabReselection: teamReselection,
         onSettingsTransitionProgress: (progress) {
           if (settingsTransitionProgress.value != progress) {
             settingsTransitionProgress.value = progress;
           }
         },
       ),
-      if (visitedTabs.value.contains(1))
-        ActivityPage(tabReselection: activityReselection)
-      else
-        const SizedBox.shrink(),
-      if (visitedTabs.value.contains(2))
-        SearchPage(tabReselection: searchReselection)
-      else
-        const SizedBox.shrink(),
     ];
 
-    final settingsTransitionGradient = tabIndex.value == 0
+    final settingsTransitionGradient = tabIndex.value == 4
         ? context.appColors.topSectionGradient
         : null;
 
@@ -176,7 +191,7 @@ class HomePage extends HookConsumerWidget {
                   ),
                   Positioned.fill(
                     child: ChannelQuickActionsLauncher(
-                      visible: tabIndex.value == 0,
+                      visible: tabIndex.value == 4,
                       navigationBarHeight: HomePage._tabBarHeight,
                       navigationBarBottomGap: HomePage._tabBarBottomGap,
                       navigationBarWidth: navigationBarWidth,
@@ -192,21 +207,13 @@ class HomePage extends HookConsumerWidget {
               hasUnreadInbox: hasUnreadInbox,
               onDestinationSelected: (i) {
                 if (i == tabIndex.value) {
-                  switch (i) {
-                    case 0:
-                      homeReselection.value++;
-                    case 1:
-                      activityReselection.value++;
-                    case 2:
-                      searchReselection.value++;
-                  }
+                  if (i == 4) teamReselection.value++;
                   return;
                 }
                 tabContentTransitionDirection.value = i > tabIndex.value
                     ? 1
                     : -1;
                 unawaited(HapticFeedback.selectionClick());
-                visitedTabs.value.add(i);
                 tabIndex.value = i;
                 if (reducedMotion) {
                   tabContentTransitionController.value = 1;
@@ -397,7 +404,7 @@ class _FloatingTabBar extends StatelessWidget {
                                 child: _FloatingTabDestination(
                                   destination: destinations[i],
                                   selected: i == safeSelectedIndex,
-                                  showUnreadBadge: i == 1 && hasUnreadInbox,
+                                  showUnreadBadge: i == 4 && hasUnreadInbox,
                                   onTap: () => onDestinationSelected(i),
                                 ),
                               ),
@@ -464,10 +471,13 @@ class _FloatingTabDestination extends StatelessWidget {
             ),
             borderRadius: BorderRadius.circular(HomePage._selectedTabRadius),
             child: Center(
-              child: SizedBox(
-                width: HomePage._tabIconSize + 8,
-                height: HomePage._tabIconSize + 8,
-                child: Stack(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: HomePage._tabIconSize + 8,
+                    height: HomePage._tabIconSize + 8,
+                    child: Stack(
                   clipBehavior: Clip.none,
                   children: [
                     Center(
@@ -518,7 +528,20 @@ class _FloatingTabDestination extends StatelessWidget {
                         ),
                       ),
                   ],
-                ),
+                    ),
+                  ),
+                  const SizedBox(height: Grid.quarter),
+                  Text(
+                    destination.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.fade,
+                    softWrap: false,
+                    style: context.textTheme.labelSmall?.copyWith(
+                      color: foregroundColor,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

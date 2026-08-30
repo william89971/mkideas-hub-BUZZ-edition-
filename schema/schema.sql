@@ -219,9 +219,12 @@ CREATE TABLE events (
     -- Privacy: encrypted/private routing wrappers and p-gated membership notices
     -- must never be discoverable through NIP-50 full-text search. NULL tsvector
     -- never matches `@@`.
-    -- Keep in sync with migrations (final state: 0001 + 0005 + 0014 + 0033).
+    -- Keep in sync with migrations (final state: 0001 + 0005 + 0014 + 0033 + 0042).
     search_tsv  TSVECTOR GENERATED ALWAYS AS (
-        CASE WHEN kind IN (1059, 30179, 30300, 30350, 30622, 44100, 44101, 44200) THEN NULL::tsvector
+        CASE WHEN kind IN (30803, 30804, 30805, 30809, 48200, 48201)
+             THEN to_tsvector('simple', content)
+             WHEN kind IN (1059, 30179, 30300, 30350, 30622, 44100, 44101, 44200)
+             THEN NULL::tsvector
              ELSE to_tsvector('simple', content)
         END
     ) STORED,
@@ -1895,3 +1898,27 @@ CREATE INDEX idx_relay_operator_audit_target
 
 INSERT INTO _operator_global_tables (table_name, reason) VALUES
     ('relay_operator_audit', 'deployment-global append-only roster mutation audit trail; no community_id intentionally');
+
+-- ── MK Ideas authoritative entity heads ────────────────────────────────────
+-- Human-signed state events remain authoritative across different authors.
+-- No FK points at events because events is partitioned by created_at.
+
+CREATE TABLE mk_entity_heads (
+    community_id     UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    kind             INT NOT NULL CHECK (kind BETWEEN 30800 AND 30899),
+    d_tag            TEXT NOT NULL CHECK (length(d_tag) BETWEEN 1 AND 512),
+    current_event_id BYTEA CHECK (current_event_id IS NULL OR length(current_event_id) = 32),
+    current_version  BIGINT NOT NULL DEFAULT 0 CHECK (current_version >= 0),
+    current_pubkey   BYTEA CHECK (current_pubkey IS NULL OR length(current_pubkey) = 32),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (community_id, kind, d_tag),
+    CHECK (
+        (current_version = 0 AND current_event_id IS NULL AND current_pubkey IS NULL)
+        OR
+        (current_version > 0 AND current_event_id IS NOT NULL AND current_pubkey IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX idx_mk_entity_heads_current_event
+    ON mk_entity_heads (community_id, current_event_id)
+    WHERE current_event_id IS NOT NULL;

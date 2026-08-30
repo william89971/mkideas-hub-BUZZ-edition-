@@ -631,6 +631,40 @@ pub const KIND_GIT_STATUS_DRAFT: u32 = 1633;
 /// announcement, never a project. See `docs/nips/NIP-MP.md`.
 pub const KIND_PROJECT: u32 = 30621;
 
+// MK Ideas addressable state (30800–30899)
+/// MK Ideas goal state.
+pub const KIND_MK_GOAL: u32 = 30800;
+/// MK Ideas operational project state (distinct from NIP-MP software projects).
+pub const KIND_MK_OPERATIONAL_PROJECT: u32 = 30801;
+/// MK Ideas task state.
+pub const KIND_MK_TASK: u32 = 30802;
+/// MK Ideas person or guest state.
+pub const KIND_MK_PERSON: u32 = 30803;
+/// MK Ideas interview state.
+pub const KIND_MK_INTERVIEW: u32 = 30804;
+/// MK Ideas content item state.
+pub const KIND_MK_CONTENT: u32 = 30805;
+/// MK Ideas meeting state.
+pub const KIND_MK_MEETING: u32 = 30806;
+/// MK Ideas decision state.
+pub const KIND_MK_DECISION: u32 = 30807;
+/// MK Ideas knowledge entry state.
+pub const KIND_MK_KNOWLEDGE: u32 = 30808;
+/// MK Ideas human approval request state.
+pub const KIND_MK_APPROVAL: u32 = 30809;
+
+// MK Ideas operation/system events (48200–48299)
+/// Human-signed decision on an MK Ideas approval request.
+pub const KIND_MK_APPROVAL_ACTION: u32 = 48200;
+/// Agent-authored MK Ideas draft or proposal.
+pub const KIND_MK_AGENT_PROPOSAL: u32 = 48201;
+/// Service-authored receipt for an idempotent MK Ideas import.
+pub const KIND_MK_MIGRATION_RECEIPT: u32 = 48202;
+/// Service-authored generated MK Ideas summary.
+pub const KIND_MK_GENERATED_SUMMARY: u32 = 48203;
+/// Service-authored MK Ideas maintenance or system activity.
+pub const KIND_MK_SYSTEM_ACTIVITY: u32 = 48204;
+
 /// All registered kind constants — used for duplicate detection and iteration.
 pub const ALL_KINDS: &[u32] = &[
     KIND_PROFILE,
@@ -763,6 +797,21 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_GIT_STATUS_CLOSED,
     KIND_GIT_STATUS_DRAFT,
     KIND_PROJECT,
+    KIND_MK_GOAL,
+    KIND_MK_OPERATIONAL_PROJECT,
+    KIND_MK_TASK,
+    KIND_MK_PERSON,
+    KIND_MK_INTERVIEW,
+    KIND_MK_CONTENT,
+    KIND_MK_MEETING,
+    KIND_MK_DECISION,
+    KIND_MK_KNOWLEDGE,
+    KIND_MK_APPROVAL,
+    KIND_MK_APPROVAL_ACTION,
+    KIND_MK_AGENT_PROPOSAL,
+    KIND_MK_MIGRATION_RECEIPT,
+    KIND_MK_GENERATED_SUMMARY,
+    KIND_MK_SYSTEM_ACTIVITY,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -851,6 +900,16 @@ pub fn event_kind_i32(event: &nostr::Event) -> i32 {
     event.kind.as_u16() as i32
 }
 
+/// Returns whether `kind` is in the reserved MK Ideas addressable-state range.
+pub const fn is_mkideas_state_kind(kind: u32) -> bool {
+    kind >= 30800 && kind <= 30899
+}
+
+/// Returns whether `kind` is in the reserved MK Ideas operation/system range.
+pub const fn is_mkideas_operation_kind(kind: u32) -> bool {
+    kind >= 48200 && kind <= 48299
+}
+
 // Compile-time: new kinds are in the expected ranges.
 const _: () = assert!(is_replaceable(KIND_AGENT_PROFILE)); // 10100 ∈ 10000–19999
 const _: () = assert!(is_parameterized_replaceable(KIND_PERSONA)); // 30175 ∈ 30000–39999
@@ -885,6 +944,9 @@ const _: () = assert!(!is_ephemeral(KIND_AGENT_TURN_METRIC));
 const _: () = assert!(!is_replaceable(KIND_AGENT_TURN_METRIC));
 const _: () = assert!(!is_parameterized_replaceable(KIND_AGENT_TURN_METRIC));
 const _: () = assert!(KIND_AGENT_TURN_METRIC <= u16::MAX as u32);
+const _: () = assert!(is_parameterized_replaceable(KIND_MK_PERSON));
+const _: () = assert!(is_mkideas_state_kind(KIND_MK_APPROVAL));
+const _: () = assert!(is_mkideas_operation_kind(KIND_MK_SYSTEM_ACTIVITY));
 // Moderation kinds fit u16 and are neither replaceable nor ephemeral:
 // 1984 is a regular event (persisted to the queue, never fanned out);
 // 9040–9044 are direct commands (executed, never stored).
@@ -905,6 +967,23 @@ mod tests {
         for &k in ALL_KINDS {
             assert!(seen.insert(k), "duplicate kind value: {k}");
         }
+    }
+
+    #[test]
+    fn mkideas_reserved_ranges_are_collision_free() {
+        let state_kinds: Vec<u32> = ALL_KINDS
+            .iter()
+            .copied()
+            .filter(|kind| is_mkideas_state_kind(*kind))
+            .collect();
+        assert_eq!(state_kinds, (30800..=30809).collect::<Vec<_>>());
+
+        let operation_kinds: Vec<u32> = ALL_KINDS
+            .iter()
+            .copied()
+            .filter(|kind| is_mkideas_operation_kind(*kind))
+            .collect();
+        assert_eq!(operation_kinds, (48200..=48204).collect::<Vec<_>>());
     }
 
     #[test]

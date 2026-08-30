@@ -93,6 +93,30 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goWork = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/work" }, behavior),
+    [commitNavigation],
+  );
+
+  const goPeople = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/people" }, behavior),
+    [commitNavigation],
+  );
+
+  const goStudio = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/studio" }, behavior),
+    [commitNavigation],
+  );
+
+  const goTeam = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation({ to: "/team" }, behavior),
+    [commitNavigation],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -469,11 +493,15 @@ export function useAppNavigation() {
     goNewWorkflowForChannel,
     goProject,
     goProjects,
+    goPeople,
     goPulse,
     goProfile,
     goSettings,
     goWorkflow,
     goWorkflows,
+    goWork,
+    goStudio,
+    goTeam,
     openSearchHit,
   };
 }

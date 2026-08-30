@@ -1301,6 +1301,8 @@ declare global {
       content: string;
       tags: string[][];
     }>;
+    /** Relay-backed MK Ideas V0 fixtures used by focused desktop E2E specs. */
+    __BUZZ_E2E_MKIDEAS_EVENTS__?: RelayEvent[];
     /** Structured merge error returned by the mock native merge command. */
     __BUZZ_E2E_PROJECT_MERGE_ERROR__?: {
       code: string;
@@ -1489,6 +1491,7 @@ declare global {
 
 const DEFAULT_RELAY_HTTP_URL = "http://localhost:3000";
 const DEFAULT_RELAY_WS_URL = "ws://localhost:3000";
+const MKIDEAS_E2E_KINDS = new Set([30803, 30804, 30805, 30809, 48200, 48201]);
 
 // NIP event kinds the mock reaction handlers emit.
 const KIND_REACTION = 7; // NIP-25 reaction
@@ -10770,6 +10773,23 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (filter.kinds?.some((kind) => MKIDEAS_E2E_KINDS.has(kind))) {
+      for (const event of window.__BUZZ_E2E_MKIDEAS_EVENTS__ ?? []) {
+        if (filter.kinds && !filter.kinds.includes(event.kind)) continue;
+        const communityHosts = filter["#h"];
+        const eventHost = event.tags.find((tag) => tag[0] === "h")?.[1];
+        if (
+          communityHosts &&
+          (!eventHost || !communityHosts.includes(eventHost))
+        ) {
+          continue;
+        }
+        sendWsText(socket.handler, ["EVENT", subId, event]);
+      }
+      sendWsText(socket.handler, ["EOSE", subId]);
+      return;
+    }
+
     // Project queries: NIP-34 kinds, or kind:1 comments scoped by repo `a`
     // tag or by issue/PR root `e` tag (discussions, approvals, review
     // requests, assignment operations). Channel messages are kind 9, so a
@@ -10951,6 +10971,24 @@ function sendToMockSocket(args: {
       }
 
       recordMockUserStatus(event);
+      emitMockGlobalEvent(event);
+      sendWsText(socket.handler, ["OK", event.id, true, ""]);
+      return;
+    }
+
+    if (MKIDEAS_E2E_KINDS.has(event.kind)) {
+      const events = window.__BUZZ_E2E_MKIDEAS_EVENTS__ ?? [];
+      const dTag = event.tags.find((tag) => tag[0] === "d")?.[1];
+      if (dTag) {
+        const previousIndex = events.findIndex(
+          (stored) =>
+            stored.kind === event.kind &&
+            stored.tags.some((tag) => tag[0] === "d" && tag[1] === dTag),
+        );
+        if (previousIndex >= 0) events.splice(previousIndex, 1);
+      }
+      events.push(event);
+      window.__BUZZ_E2E_MKIDEAS_EVENTS__ = events;
       emitMockGlobalEvent(event);
       sendWsText(socket.handler, ["OK", event.id, true, ""]);
       return;

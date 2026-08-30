@@ -259,6 +259,8 @@ export async function fetchBuzzEntityMetadata(
   const parsed = parseEntityLink(href);
   if (!parsed.ok) return null;
 
+  if (parsed.value.type === "mkideas") return null;
+
   const { owner, dtag } = parsed.value;
   if (parsed.value.type === "project") {
     const projectAddress = `${KIND_PROJECT_ANNOUNCEMENT}:${owner}:${dtag}`;
@@ -430,7 +432,8 @@ export function isBuzzEntityPreview(preview: SupportedLinkPreview): boolean {
     preview.kind === "buzz-pull-request" ||
     preview.kind === "buzz-issue" ||
     preview.kind === "buzz-repository" ||
-    preview.kind === "buzz-project"
+    preview.kind === "buzz-project" ||
+    preview.kind === "buzz-mkideas"
   );
 }
 

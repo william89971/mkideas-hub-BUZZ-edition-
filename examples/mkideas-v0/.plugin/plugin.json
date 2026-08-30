@@ -1,0 +1,25 @@
+{
+  "$schema": "https://open-plugin-spec.org/schema/v1/plugin.json",
+  "id": "org.mkideas.v0-agents",
+  "name": "MK Ideas V0 Agents",
+  "version": "0.1.0",
+  "description": "Human-gated guest research and interview clip proposals for the MK Ideas V0 demonstration.",
+  "author": "MK Ideas",
+  "license": "Apache-2.0",
+  "keywords": ["mkideas", "research", "interviews", "human-review"],
+  "personas": [
+    "agents/guest-researcher.persona.md",
+    "agents/content-clip-copilot.persona.md"
+  ],
+  "pack_instructions": "instructions.md",
+  "defaults": {
+    "temperature": 0.3,
+    "triggers": {
+      "mentions": true,
+      "keywords": [],
+      "all_messages": false
+    },
+    "thread_replies": true,
+    "broadcast_replies": false
+  }
+}

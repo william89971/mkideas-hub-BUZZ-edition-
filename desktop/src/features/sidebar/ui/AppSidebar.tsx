@@ -87,7 +87,6 @@ export function AppSidebar({
   isCreatingChannel,
   isCreatingForum,
   profile,
-  projectsOverviewActive,
   relayConnectionCard,
   selfPresenceStatus,
   errorMessage,
@@ -112,11 +111,11 @@ export function AppSidebar({
   onUpdateCommunity,
   onRemoveCommunity,
   onCreateAgent,
-  onSelectAgents,
-  onSelectProjects,
-  onSelectPulse,
-  onSelectWorkflows,
   onSelectHome,
+  onSelectWork,
+  onSelectPeople,
+  onSelectStudio,
+  onSelectTeam,
   onSelectChannel,
   onOpenSearchResult,
   searchChannels,
@@ -553,12 +552,11 @@ export function AppSidebar({
             >
               <AppSidebarPrimaryMenu
                 homeBadgeCount={homeBadgeCount}
-                onSelectAgents={onSelectAgents}
-                onSelectHome={onSelectHome}
-                onSelectProjects={onSelectProjects}
-                onSelectPulse={onSelectPulse}
-                onSelectWorkflows={onSelectWorkflows}
-                projectsOverviewActive={projectsOverviewActive}
+                onSelectToday={onSelectHome}
+                onSelectWork={onSelectWork}
+                onSelectPeople={onSelectPeople}
+                onSelectStudio={onSelectStudio}
+                onSelectTeam={onSelectTeam}
                 selectedView={selectedView}
               />
 

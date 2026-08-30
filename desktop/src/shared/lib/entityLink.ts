@@ -7,6 +7,7 @@
  *   buzz://project?owner=<owner-pubkey>&d=<project-dtag>[&tab=<tab>]
  *   buzz://pr?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
  *   buzz://issue?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
+ *   buzz://mkideas?kind=<state-kind>&id=<entity-uuid>[&proposal=<proposal-uuid>]
  *
  * `owner` + `d` identify the NIP-34 repository coordinate
  * (`30617:<owner>:<d>`) or the NIP-MP project coordinate
@@ -52,7 +53,13 @@ export type ParsedEntityLink =
       tab?: EntityLinkTab;
       commitHash?: string;
     }
-  | { type: "project"; owner: string; dtag: string; tab?: EntityLinkTab };
+  | { type: "project"; owner: string; dtag: string; tab?: EntityLinkTab }
+  | {
+      type: "mkideas";
+      kind: 30803 | 30804 | 30805 | 30809;
+      id: string;
+      proposalId?: string;
+    };
 
 export type EntityLinkParseResult =
   | { ok: true; value: ParsedEntityLink }
@@ -61,6 +68,9 @@ export type EntityLinkParseResult =
 const HEX64_RE = /^[a-fA-F0-9]{64}$/;
 const GIT_OBJECT_ID_RE = /^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/;
 const DTAG_RE = /^[a-zA-Z0-9._-]{1,64}$/;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MKIDEAS_LINK_KINDS = new Set([30803, 30804, 30805, 30809]);
 
 function isValidDtag(dtag: string): boolean {
   return DTAG_RE.test(dtag) && !dtag.startsWith(".") && !dtag.includes("..");
@@ -154,6 +164,24 @@ export function buildIssueLink(input: {
   return `buzz://issue?id=${input.id.toLowerCase()}&owner=${input.owner.toLowerCase()}&d=${input.dtag}`;
 }
 
+/** Build a community-relative link to an MK Ideas operational record. */
+export function buildMkIdeasLink(input: {
+  kind: 30803 | 30804 | 30805 | 30809;
+  id: string;
+  proposalId?: string;
+}): string {
+  if (!MKIDEAS_LINK_KINDS.has(input.kind)) {
+    throw new Error("entityLink: unsupported MK Ideas kind");
+  }
+  if (!UUID_RE.test(input.id)) {
+    throw new Error("entityLink: MK Ideas id must be a UUID");
+  }
+  if (input.proposalId && !UUID_RE.test(input.proposalId)) {
+    throw new Error("entityLink: MK Ideas proposal must be a UUID");
+  }
+  return `buzz://mkideas?kind=${input.kind}&id=${input.id.toLowerCase()}${input.proposalId ? `&proposal=${input.proposalId.toLowerCase()}` : ""}`;
+}
+
 /**
  * Cheap pre-check used by the markdown renderer and preview extraction
  * before parsing. `buzz://message` is intentionally excluded — it has its
@@ -165,7 +193,8 @@ export function isEntityLink(href: string | undefined | null): boolean {
     href.startsWith("buzz://pr?") ||
     href.startsWith("buzz://issue?") ||
     href.startsWith("buzz://repo?") ||
-    href.startsWith("buzz://project?")
+    href.startsWith("buzz://project?") ||
+    href.startsWith("buzz://mkideas?")
   );
 }
 
@@ -201,7 +230,8 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     host !== "pr" &&
     host !== "issue" &&
     host !== "repo" &&
-    host !== "project"
+    host !== "project" &&
+    host !== "mkideas"
   ) {
     return { ok: false, reason: "wrong-host" };
   }
@@ -221,11 +251,15 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
   const KNOWN_REPO_PARAMS = new Set(["owner", "d", "tab", "commit"]);
   const KNOWN_PROJECT_PARAMS = new Set(["owner", "d", "tab"]);
   const KNOWN_EVENT_PARAMS = new Set(["id", "owner", "d"]);
-  const knownParams = isCoordinateHost
-    ? host === "repo"
-      ? KNOWN_REPO_PARAMS
-      : KNOWN_PROJECT_PARAMS
-    : KNOWN_EVENT_PARAMS;
+  const KNOWN_MKIDEAS_PARAMS = new Set(["kind", "id", "proposal"]);
+  const knownParams =
+    host === "mkideas"
+      ? KNOWN_MKIDEAS_PARAMS
+      : isCoordinateHost
+        ? host === "repo"
+          ? KNOWN_REPO_PARAMS
+          : KNOWN_PROJECT_PARAMS
+        : KNOWN_EVENT_PARAMS;
 
   for (const key of parsed.searchParams.keys()) {
     if (!knownParams.has(key)) {
@@ -237,6 +271,30 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     if (values.length > 1) {
       return { ok: false, reason: "duplicate-param" };
     }
+  }
+
+  if (host === "mkideas") {
+    const kind = Number(parsed.searchParams.get("kind"));
+    const id = parsed.searchParams.get("id");
+    const proposalId = parsed.searchParams.get("proposal");
+    if (!MKIDEAS_LINK_KINDS.has(kind)) {
+      return { ok: false, reason: "invalid-mkideas-kind" };
+    }
+    if (!id || !UUID_RE.test(id)) {
+      return { ok: false, reason: "invalid-mkideas-id" };
+    }
+    if (proposalId !== null && !UUID_RE.test(proposalId)) {
+      return { ok: false, reason: "invalid-mkideas-proposal" };
+    }
+    return {
+      ok: true,
+      value: {
+        type: "mkideas",
+        kind: kind as 30803 | 30804 | 30805 | 30809,
+        id: id.toLowerCase(),
+        ...(proposalId ? { proposalId: proposalId.toLowerCase() } : {}),
+      },
+    };
   }
 
   const owner = parsed.searchParams.get("owner");
@@ -305,6 +363,9 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
  * different d-tag.
  */
 export function entityLinkProjectRouteId(link: ParsedEntityLink): string {
+  if (link.type === "mkideas") {
+    throw new Error("MK Ideas links do not identify a developer project");
+  }
   const kind = link.type === "project" ? 30621 : 30617;
   return `${kind}:${link.owner}:${link.dtag}`;
 }

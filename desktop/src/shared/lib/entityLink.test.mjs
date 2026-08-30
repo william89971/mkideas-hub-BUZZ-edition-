@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   buildCommitLink,
   buildIssueLink,
+  buildMkIdeasLink,
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
@@ -94,6 +95,24 @@ test("parseEntityLink round-trips built links", () => {
   });
 });
 
+test("MK Ideas links round-trip a record and optional proposal", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const proposalId = "22222222-2222-4222-8222-222222222222";
+  const link = buildMkIdeasLink({ kind: 30803, id, proposalId });
+  assert.equal(
+    link,
+    `buzz://mkideas?kind=30803&id=${id}&proposal=${proposalId}`,
+  );
+  assert.deepEqual(parseEntityLink(link), {
+    ok: true,
+    value: { type: "mkideas", kind: 30803, id, proposalId },
+  });
+  assert.deepEqual(parseEntityLink(`buzz://mkideas?kind=30800&id=${id}`), {
+    ok: false,
+    reason: "invalid-mkideas-kind",
+  });
+});
+
 test("commit links select an exact repository commit", () => {
   const link = buildCommitLink({
     commitHash: EVENT_ID,
@@ -153,6 +172,12 @@ test("isEntityLink matches entity hosts and excludes message links", () => {
   assert.equal(isEntityLink(`buzz://issue?id=${EVENT_ID}`), true);
   assert.equal(isEntityLink(`buzz://repo?owner=${OWNER}`), true);
   assert.equal(isEntityLink(`buzz://project?owner=${OWNER}`), true);
+  assert.equal(
+    isEntityLink(
+      "buzz://mkideas?kind=30803&id=11111111-1111-4111-8111-111111111111",
+    ),
+    true,
+  );
   assert.equal(isEntityLink("buzz://message?channel=x&id=y"), false);
   assert.equal(isEntityLink("https://github.com/block/buzz"), false);
   assert.equal(isEntityLink(null), false);

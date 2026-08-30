@@ -32,7 +32,6 @@ export type AppSidebarProps = {
   isCreatingChannel: boolean;
   isCreatingForum: boolean;
   profile?: Profile;
-  projectsOverviewActive: boolean;
   relayConnectionCard: ReturnType<typeof useSidebarRelayConnectionCard>;
   selfPresenceStatus: PresenceStatus;
   errorMessage?: string;
@@ -44,7 +43,11 @@ export type AppSidebarProps = {
     | "agents"
     | "workflows"
     | "pulse"
-    | "projects";
+    | "projects"
+    | "work"
+    | "people"
+    | "studio"
+    | "team";
   unreadChannelCounts: ReadonlyMap<string, number>;
   unreadChannelIds: ReadonlySet<string>;
   previewActivityChannelIds: ReadonlySet<string>;
@@ -82,11 +85,11 @@ export type AppSidebarProps = {
   ) => void;
   onRemoveCommunity: (id: string) => Promise<LeaveCommunityResult | undefined>;
   onCreateAgent: () => void;
-  onSelectAgents: () => void;
-  onSelectProjects: () => void;
-  onSelectPulse: () => void;
-  onSelectWorkflows: () => void;
   onSelectHome: () => void;
+  onSelectWork: () => void;
+  onSelectPeople: () => void;
+  onSelectStudio: () => void;
+  onSelectTeam: () => void;
   onSelectChannel: (channelId: string) => void;
   onOpenSearchResult: (hit: SearchHit, query: string) => void;
   /** Full channel set for global search, including channels outside the joined sidebar list. */

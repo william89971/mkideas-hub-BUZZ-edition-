@@ -246,6 +246,14 @@ pub async fn validate_standard_deletion_event(
         if parts.len() < 2 {
             return Err(anyhow::anyhow!("invalid a-tag format"));
         }
+        let target_kind = parts[0]
+            .parse::<u32>()
+            .map_err(|_| anyhow::anyhow!("invalid kind in a-tag"))?;
+        if buzz_core::kind::is_mkideas_state_kind(target_kind) {
+            return Err(anyhow::anyhow!(
+                "MK Ideas records must be archived through a validated state transition"
+            ));
+        }
         let target_pubkey_bytes =
             hex::decode(parts[1]).map_err(|_| anyhow::anyhow!("invalid pubkey in a-tag"))?;
         if target_pubkey_bytes != actor_bytes
@@ -265,6 +273,12 @@ pub async fn validate_standard_deletion_event(
             .get_event_by_id_including_deleted(tenant.community(), &target_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("target event not found"))?;
+
+        if buzz_core::kind::is_mkideas_state_kind(event_kind_u32(&target_event.event)) {
+            return Err(anyhow::anyhow!(
+                "MK Ideas records must be archived through a validated state transition"
+            ));
+        }
 
         let target_author =
             effective_message_author(&target_event.event, &state.relay_keypair.public_key());

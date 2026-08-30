@@ -11,30 +11,32 @@ use uuid::Uuid;
 
 use buzz_auth::Scope;
 use buzz_core::kind::{
-    event_kind_u32, is_identity_archive_request_kind, is_parameterized_replaceable,
-    is_relay_admin_kind, KIND_AGENT_ENGRAM, KIND_AGENT_PROFILE, KIND_AGENT_TURN_METRIC,
-    KIND_APPROVAL_DENY, KIND_APPROVAL_GRANT, KIND_AUTH, KIND_BOOKMARK_LIST, KIND_BOOKMARK_SET,
-    KIND_CANVAS, KIND_CONTACT_LIST, KIND_DELETION, KIND_DM_ADD_MEMBER, KIND_DM_HIDE, KIND_DM_OPEN,
-    KIND_EMOJI_LIST, KIND_EMOJI_SET, KIND_EVENT_REMINDER, KIND_FOLLOW_SET, KIND_FORUM_COMMENT,
-    KIND_FORUM_POST, KIND_FORUM_VOTE, KIND_GIFT_WRAP, KIND_GIT_ISSUE, KIND_GIT_PATCH,
-    KIND_GIT_PR_UPDATE, KIND_GIT_PULL_REQUEST, KIND_GIT_REPO_ANNOUNCEMENT, KIND_GIT_REPO_STATE,
-    KIND_GIT_STATUS_CLOSED, KIND_GIT_STATUS_DRAFT, KIND_GIT_STATUS_MERGED, KIND_GIT_STATUS_OPEN,
-    KIND_HUDDLE_ENDED, KIND_HUDDLE_GUIDELINES, KIND_HUDDLE_PARTICIPANT_JOINED,
-    KIND_HUDDLE_PARTICIPANT_LEFT, KIND_HUDDLE_STARTED, KIND_IA_ARCHIVE_REQUEST,
-    KIND_IA_UNARCHIVE_REQUEST, KIND_LONG_FORM, KIND_MANAGED_AGENT, KIND_MEMBER_ADDED_NOTIFICATION,
-    KIND_MEMBER_REMOVED_NOTIFICATION, KIND_MODERATION_BAN, KIND_MODERATION_RESOLVE_REPORT,
-    KIND_MODERATION_TIMEOUT, KIND_MODERATION_UNBAN, KIND_MODERATION_UNTIMEOUT, KIND_MUTE_LIST,
-    KIND_NIP29_CREATE_GROUP, KIND_NIP29_DELETE_EVENT, KIND_NIP29_DELETE_GROUP,
-    KIND_NIP29_EDIT_METADATA, KIND_NIP29_JOIN_REQUEST, KIND_NIP29_LEAVE_REQUEST,
-    KIND_NIP29_PUT_USER, KIND_NIP29_REMOVE_USER, KIND_NIP43_LEAVE_REQUEST,
-    KIND_NIP65_RELAY_LIST_METADATA, KIND_PERSONA, KIND_PIN_LIST, KIND_PRESENCE_UPDATE,
-    KIND_PRIVATE_MANAGED_AGENT, KIND_PRODUCT_FEEDBACK, KIND_PROFILE, KIND_PROJECT, KIND_REACTION,
-    KIND_READ_STATE, KIND_REPORT, KIND_STREAM_MESSAGE, KIND_STREAM_MESSAGE_BOOKMARKED,
-    KIND_STREAM_MESSAGE_DIFF, KIND_STREAM_MESSAGE_EDIT, KIND_STREAM_MESSAGE_PINNED,
-    KIND_STREAM_MESSAGE_SCHEDULED, KIND_STREAM_MESSAGE_V2, KIND_STREAM_REMINDER, KIND_TEAM,
-    KIND_TEAM_CATALOG, KIND_TEXT_NOTE, KIND_USER_STATUS, KIND_WORKFLOW_DEF, KIND_WORKFLOW_TRIGGER,
-    RELAY_ADMIN_ADD_MEMBER, RELAY_ADMIN_CHANGE_ROLE, RELAY_ADMIN_REMOVE_MEMBER,
-    RELAY_ADMIN_SET_WORKSPACE_PROFILE,
+    event_kind_u32, is_identity_archive_request_kind, is_mkideas_operation_kind,
+    is_mkideas_state_kind, is_parameterized_replaceable, is_relay_admin_kind, KIND_AGENT_ENGRAM,
+    KIND_AGENT_PROFILE, KIND_AGENT_TURN_METRIC, KIND_APPROVAL_DENY, KIND_APPROVAL_GRANT, KIND_AUTH,
+    KIND_BOOKMARK_LIST, KIND_BOOKMARK_SET, KIND_CANVAS, KIND_CONTACT_LIST, KIND_DELETION,
+    KIND_DM_ADD_MEMBER, KIND_DM_HIDE, KIND_DM_OPEN, KIND_EMOJI_LIST, KIND_EMOJI_SET,
+    KIND_EVENT_REMINDER, KIND_FOLLOW_SET, KIND_FORUM_COMMENT, KIND_FORUM_POST, KIND_FORUM_VOTE,
+    KIND_GIFT_WRAP, KIND_GIT_ISSUE, KIND_GIT_PATCH, KIND_GIT_PR_UPDATE, KIND_GIT_PULL_REQUEST,
+    KIND_GIT_REPO_ANNOUNCEMENT, KIND_GIT_REPO_STATE, KIND_GIT_STATUS_CLOSED, KIND_GIT_STATUS_DRAFT,
+    KIND_GIT_STATUS_MERGED, KIND_GIT_STATUS_OPEN, KIND_HUDDLE_ENDED, KIND_HUDDLE_GUIDELINES,
+    KIND_HUDDLE_PARTICIPANT_JOINED, KIND_HUDDLE_PARTICIPANT_LEFT, KIND_HUDDLE_STARTED,
+    KIND_IA_ARCHIVE_REQUEST, KIND_IA_UNARCHIVE_REQUEST, KIND_LONG_FORM, KIND_MANAGED_AGENT,
+    KIND_MEMBER_ADDED_NOTIFICATION, KIND_MEMBER_REMOVED_NOTIFICATION, KIND_MK_AGENT_PROPOSAL,
+    KIND_MK_APPROVAL, KIND_MK_APPROVAL_ACTION, KIND_MK_CONTENT, KIND_MK_GENERATED_SUMMARY,
+    KIND_MK_INTERVIEW, KIND_MK_MIGRATION_RECEIPT, KIND_MK_PERSON, KIND_MK_SYSTEM_ACTIVITY,
+    KIND_MODERATION_BAN, KIND_MODERATION_RESOLVE_REPORT, KIND_MODERATION_TIMEOUT,
+    KIND_MODERATION_UNBAN, KIND_MODERATION_UNTIMEOUT, KIND_MUTE_LIST, KIND_NIP29_CREATE_GROUP,
+    KIND_NIP29_DELETE_EVENT, KIND_NIP29_DELETE_GROUP, KIND_NIP29_EDIT_METADATA,
+    KIND_NIP29_JOIN_REQUEST, KIND_NIP29_LEAVE_REQUEST, KIND_NIP29_PUT_USER, KIND_NIP29_REMOVE_USER,
+    KIND_NIP43_LEAVE_REQUEST, KIND_NIP65_RELAY_LIST_METADATA, KIND_PERSONA, KIND_PIN_LIST,
+    KIND_PRESENCE_UPDATE, KIND_PRIVATE_MANAGED_AGENT, KIND_PRODUCT_FEEDBACK, KIND_PROFILE,
+    KIND_PROJECT, KIND_REACTION, KIND_READ_STATE, KIND_REPORT, KIND_STREAM_MESSAGE,
+    KIND_STREAM_MESSAGE_BOOKMARKED, KIND_STREAM_MESSAGE_DIFF, KIND_STREAM_MESSAGE_EDIT,
+    KIND_STREAM_MESSAGE_PINNED, KIND_STREAM_MESSAGE_SCHEDULED, KIND_STREAM_MESSAGE_V2,
+    KIND_STREAM_REMINDER, KIND_TEAM, KIND_TEAM_CATALOG, KIND_TEXT_NOTE, KIND_USER_STATUS,
+    KIND_WORKFLOW_DEF, KIND_WORKFLOW_TRIGGER, RELAY_ADMIN_ADD_MEMBER, RELAY_ADMIN_CHANGE_ROLE,
+    RELAY_ADMIN_REMOVE_MEMBER, RELAY_ADMIN_SET_WORKSPACE_PROFILE,
 };
 use buzz_core::tenant::TenantContext;
 use buzz_core::verification::verify_event;
@@ -431,11 +433,314 @@ fn map_push_accept_error(error: super::push_lease::AcceptError) -> IngestError {
     }
 }
 
+async fn validate_mkideas_event(
+    tenant: &TenantContext,
+    state: &AppState,
+    event: &Event,
+    kind: u32,
+) -> Result<Option<buzz_core::mkideas::MkStateEnvelope>, IngestError> {
+    if !is_mkideas_state_kind(kind) && !is_mkideas_operation_kind(kind) {
+        return Ok(None);
+    }
+
+    let community_tag = event
+        .tags
+        .iter()
+        .filter_map(|tag| {
+            let parts = tag.as_slice();
+            (parts.first().map(String::as_str) == Some("h"))
+                .then(|| parts.get(1).cloned())
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+    if community_tag.len() != 1 || community_tag[0] != tenant.host() {
+        return Err(IngestError::Rejected(
+            "invalid: MK Ideas h tag must match the active community host".into(),
+        ));
+    }
+
+    let signer = event.pubkey.to_hex();
+    let human_role = state
+        .db
+        .get_relay_member(tenant.community(), &signer)
+        .await
+        .map_err(|error| {
+            IngestError::Internal(format!("error: loading MK Ideas signer role: {error}"))
+        })?
+        .map(|member| member.role);
+
+    if is_mkideas_state_kind(kind) || kind == KIND_MK_APPROVAL_ACTION {
+        if !human_role
+            .as_deref()
+            .is_some_and(|role| matches!(role, "owner" | "admin"))
+        {
+            return Err(IngestError::AuthFailed(
+                "restricted: MK Ideas state and approvals require an owner or admin".into(),
+            ));
+        }
+    } else {
+        let is_managed_agent = state
+            .db
+            .get_agent_channel_policy(tenant.community(), event.pubkey.as_bytes())
+            .await
+            .map_err(|error| {
+                IngestError::Internal(format!("error: loading MK Ideas agent identity: {error}"))
+            })?
+            .is_some_and(|(_, owner)| owner.is_some());
+        if !is_managed_agent {
+            return Err(IngestError::AuthFailed(
+                "restricted: MK Ideas service events require a managed agent identity".into(),
+            ));
+        }
+    }
+
+    if is_mkideas_state_kind(kind) {
+        let envelope = buzz_core::mkideas::validate_state_event(event)
+            .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+        validate_mkideas_links(tenant, state, kind, &envelope.content).await?;
+        return Ok(Some(envelope));
+    }
+    if kind == KIND_MK_APPROVAL_ACTION {
+        buzz_core::mkideas::validate_approval_action(event)
+            .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+        validate_mkideas_approval_action_links(tenant, state, event).await?;
+        return Ok(None);
+    }
+    if kind == KIND_MK_AGENT_PROPOSAL {
+        buzz_core::mkideas::validate_agent_proposal(event)
+            .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+        validate_mkideas_proposal_target(tenant, state, event).await?;
+        return Ok(None);
+    }
+    match kind {
+        KIND_MK_MIGRATION_RECEIPT | KIND_MK_GENERATED_SUMMARY | KIND_MK_SYSTEM_ACTIVITY => {
+            let content: serde_json::Value =
+                serde_json::from_str(&event.content).map_err(|error| {
+                    IngestError::Rejected(format!("invalid: MK Ideas system payload: {error}"))
+                })?;
+            if !content.is_object()
+                || content
+                    .get("schema_version")
+                    .and_then(serde_json::Value::as_u64)
+                    != Some(1)
+            {
+                return Err(IngestError::Rejected(
+                    "invalid: MK Ideas system payload must be a schema-version-1 object".into(),
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(buzz_core::mkideas::MkValidationError::Content(
+            "reserved MK Ideas operation kind is not enabled".to_string(),
+        )),
+    }
+    .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+    Ok(None)
+}
+
+async fn validate_mkideas_proposal_target(
+    tenant: &TenantContext,
+    state: &AppState,
+    event: &Event,
+) -> Result<(), IngestError> {
+    let content: serde_json::Value = serde_json::from_str(&event.content)
+        .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+    let target_id = content
+        .get("target_id")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .ok_or_else(|| IngestError::Rejected("invalid: `target_id` must be a UUID".into()))?;
+    let target_kind = content
+        .get("target_kind")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| IngestError::Rejected("invalid: `target_kind` must be an integer".into()))?;
+    let exists = state
+        .db
+        .get_mkideas_entity_head(tenant.community(), target_kind, target_id)
+        .await
+        .map_err(|error| {
+            IngestError::Internal(format!("error: loading MK Ideas proposal target: {error}"))
+        })?
+        .is_some();
+    if !exists {
+        return Err(IngestError::Rejected(
+            "invalid: proposal target does not exist".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn validate_mkideas_approval_action_links(
+    tenant: &TenantContext,
+    state: &AppState,
+    event: &Event,
+) -> Result<(), IngestError> {
+    let content: serde_json::Value = serde_json::from_str(&event.content)
+        .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+    let approval_id = content
+        .get("approval_id")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .ok_or_else(|| IngestError::Rejected("invalid: approval id must be a UUID".into()))?;
+    let approval = state
+        .db
+        .get_mkideas_entity_head(tenant.community(), KIND_MK_APPROVAL, approval_id)
+        .await
+        .map_err(|error| {
+            IngestError::Internal(format!("error: loading MK Ideas approval: {error}"))
+        })?
+        .ok_or_else(|| {
+            IngestError::Rejected("invalid: approval action has no accepted approval record".into())
+        })?;
+    let approval_content: serde_json::Value = serde_json::from_str(&approval.event.content)
+        .map_err(|error| {
+            IngestError::Internal(format!("error: parsing MK Ideas approval: {error}"))
+        })?;
+    let proposal_event_id = event
+        .tags
+        .iter()
+        .find_map(|tag| {
+            let parts = tag.as_slice();
+            (parts.first().map(String::as_str) == Some("e"))
+                .then(|| parts.get(1).cloned())
+                .flatten()
+        })
+        .ok_or_else(|| IngestError::Rejected("invalid: approval action requires e tag".into()))?;
+    let action_matches = approval_content.get("target_id") == content.get("target_id")
+        && approval_content.get("proposal_id") == content.get("proposal_id")
+        && approval_content.get("status") == content.get("decision")
+        && approval_content
+            .get("proposal_event_id")
+            .and_then(serde_json::Value::as_str)
+            == Some(proposal_event_id.as_str());
+    if !action_matches {
+        return Err(IngestError::Rejected(
+            "invalid: approval action does not match the accepted approval record".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn validate_mkideas_links(
+    tenant: &TenantContext,
+    state: &AppState,
+    kind: u32,
+    content: &serde_json::Value,
+) -> Result<(), IngestError> {
+    let uuid_field = |key: &str| {
+        content
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .ok_or_else(|| IngestError::Rejected(format!("invalid: `{key}` must be a UUID")))
+    };
+    let require_head = |target_kind: u32, target_id: Uuid| async move {
+        state
+            .db
+            .get_mkideas_entity_head(tenant.community(), target_kind, target_id)
+            .await
+            .map_err(|error| {
+                IngestError::Internal(format!("error: loading MK Ideas linked record: {error}"))
+            })?
+            .ok_or_else(|| {
+                IngestError::Rejected("invalid: linked MK Ideas record does not exist".into())
+            })
+    };
+
+    match kind {
+        KIND_MK_PERSON => {}
+        KIND_MK_INTERVIEW => {
+            let guest = require_head(KIND_MK_PERSON, uuid_field("guest_id")?).await?;
+            let guest_content: serde_json::Value = serde_json::from_str(&guest.event.content)
+                .map_err(|error| {
+                    IngestError::Internal(format!("error: parsing linked guest: {error}"))
+                })?;
+            if guest_content
+                .get("do_not_contact")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+                || guest_content
+                    .get("status")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("do_not_contact")
+            {
+                return Err(IngestError::Rejected(
+                    "invalid: cannot create or update an interview for a do-not-contact guest"
+                        .into(),
+                ));
+            }
+        }
+        KIND_MK_CONTENT => {
+            require_head(KIND_MK_INTERVIEW, uuid_field("interview_id")?).await?;
+        }
+        KIND_MK_APPROVAL => {
+            let target_id = uuid_field("target_id")?;
+            let target_kind = content
+                .get("target_kind")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok())
+                .ok_or_else(|| {
+                    IngestError::Rejected("invalid: `target_kind` must be an integer".into())
+                })?;
+            require_head(target_kind, target_id).await?;
+
+            let proposal_event_id = content
+                .get("proposal_event_id")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| hex::decode(value).ok())
+                .filter(|value| value.len() == 32)
+                .ok_or_else(|| {
+                    IngestError::Rejected(
+                        "invalid: `proposal_event_id` must be a 32-byte event id".into(),
+                    )
+                })?;
+            let proposal = state
+                .db
+                .get_event_by_id(tenant.community(), &proposal_event_id)
+                .await
+                .map_err(|error| {
+                    IngestError::Internal(format!("error: loading MK Ideas proposal: {error}"))
+                })?
+                .ok_or_else(|| {
+                    IngestError::Rejected("invalid: approval proposal does not exist".into())
+                })?;
+            if event_kind_u32(&proposal.event) != KIND_MK_AGENT_PROPOSAL {
+                return Err(IngestError::Rejected(
+                    "invalid: approval must reference an agent proposal".into(),
+                ));
+            }
+            let proposal_content: serde_json::Value = serde_json::from_str(&proposal.event.content)
+                .map_err(|error| {
+                    IngestError::Internal(format!("error: parsing MK Ideas proposal: {error}"))
+                })?;
+            let proposal_matches = proposal_content.get("proposal_id")
+                == content.get("proposal_id")
+                && proposal_content.get("target_id") == content.get("target_id")
+                && proposal_content.get("target_kind") == content.get("target_kind")
+                && proposal_content
+                    .get("status")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("proposed");
+            if !proposal_matches {
+                return Err(IngestError::Rejected(
+                    "invalid: approval does not match the referenced proposal".into(),
+                ));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Determine the required scope for a given event kind.
 ///
 /// Returns `Err` for unknown kinds — the relay rejects them.
 fn required_scope_for_kind(kind: u32, event: &Event) -> Result<Scope, &'static str> {
     match kind {
+        k if is_mkideas_state_kind(k) || is_mkideas_operation_kind(k) => {
+            Ok(Scope::MessagesWrite)
+        }
         KIND_PROFILE => Ok(Scope::UsersWrite),
         KIND_TEXT_NOTE | KIND_LONG_FORM => Ok(Scope::MessagesWrite),
         KIND_CONTACT_LIST | KIND_READ_STATE | KIND_USER_STATUS | KIND_AGENT_ENGRAM
@@ -619,6 +924,9 @@ pub(crate) async fn derive_reaction_channel(
 /// limitation affecting all global-only kinds and should be addressed in the
 /// filter layer as a follow-up.
 pub(crate) fn is_global_only_kind(kind: u32) -> bool {
+    if is_mkideas_state_kind(kind) || is_mkideas_operation_kind(kind) {
+        return true;
+    }
     matches!(
         kind,
         KIND_PROFILE
@@ -2476,6 +2784,7 @@ async fn ingest_event_inner(
     }
 
     let pubkey_bytes = auth.pubkey().to_bytes().to_vec();
+    let mkideas_state = validate_mkideas_event(tenant, state, &event, kind_u32).await?;
     // E1 (§4.8): fetch the community-scoped channel row once per request and
     // thread it through the gates below (membership open-fallback, archived
     // check, join visibility) instead of re-SELECTing it at each. `None` when
@@ -3130,7 +3439,25 @@ async fn ingest_event_inner(
         });
     }
 
-    let (stored_event, was_inserted) = if buzz_core::kind::is_replaceable(kind_u32) {
+    let (stored_event, was_inserted) = if let Some(envelope) = mkideas_state.as_ref() {
+        state
+            .db
+            .replace_mkideas_entity_head(tenant.community(), &event, envelope)
+            .await
+            .map_err(|error| match error {
+                buzz_db::DbError::MkIdeasConflict {
+                    current_version,
+                    current_event_id,
+                } => IngestError::Rejected(format!(
+                    "conflict: MK Ideas entity is at version {current_version} ({})",
+                    current_event_id.as_deref().unwrap_or("no head")
+                )),
+                buzz_db::DbError::MkIdeasValidation(reason) => {
+                    IngestError::Rejected(format!("invalid: {reason}"))
+                }
+                other => IngestError::Internal(format!("error: {other}")),
+            })?
+    } else if buzz_core::kind::is_replaceable(kind_u32) {
         // NIP-16 replaceable event — atomic replace with stale-write protection.
         // channel_id is None for global kinds (0, 1, 3) due to step 5b above.
         state

@@ -143,14 +143,14 @@ export function AppShell() {
   const queryClient = useQueryClient();
   useManagedAgentRuntimeReconciliation(communitiesHook.communities); // sync storage snapshot
   const {
-    goAgents,
     goChannel,
     goHome,
+    goPeople,
     goNewMessage,
-    goProjects,
-    goPulse,
     goSettings,
-    goWorkflows,
+    goStudio,
+    goTeam,
+    goWork,
     closeSettings,
     openSearchHit,
   } = useAppNavigation();
@@ -877,7 +877,6 @@ export function AppShell() {
                               });
                             await goChannel(directMessage.id);
                           }}
-                          onSelectAgents={() => void goAgents()}
                           onSelectChannel={handleSidebarChannelSelect}
                           onOpenSearchResult={handleOpenSearchResult}
                           searchChannels={channels}
@@ -886,10 +885,11 @@ export function AppShell() {
                             scopeSearchFocusRequest,
                           ]}
                           onSelectHome={() => void goHome()}
-                          onSelectProjects={() => void goProjects()}
-                          onSelectPulse={() => void goPulse()}
+                          onSelectWork={() => void goWork()}
+                          onSelectPeople={() => void goPeople()}
+                          onSelectStudio={() => void goStudio()}
+                          onSelectTeam={() => void goTeam()}
                           onSelectSettings={handleOpenSettings}
-                          onSelectWorkflows={() => void goWorkflows()}
                           onSetPresenceStatus={(status) =>
                             presenceSession.setStatus(status)
                           }
@@ -903,9 +903,6 @@ export function AppShell() {
                             })
                           }
                           profile={profileQuery.data}
-                          projectsOverviewActive={
-                            location.pathname === "/projects"
-                          }
                           selfUserStatus={
                             deferredPubkey
                               ? (selfStatusQuery.data?.[

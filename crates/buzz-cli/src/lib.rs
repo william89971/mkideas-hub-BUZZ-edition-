@@ -234,6 +234,9 @@ enum Cmd {
     /// Agent engram management — persistent memory per NIP-AE
     #[command(subcommand)]
     Mem(MemCmd),
+    /// Publish human-gated MK Ideas research and content proposals
+    #[command(subcommand)]
+    MkIdeas(MkIdeasCmd),
     /// Persona pack operations (local, no relay connection needed)
     #[command(subcommand)]
     Pack(PackCmd),
@@ -1990,6 +1993,40 @@ pub enum ModerationCmd {
     },
 }
 
+/// MK Ideas commands intended for registered managed-agent identities.
+#[derive(Subcommand)]
+pub enum MkIdeasCmd {
+    /// Idempotently add synthetic guest-to-content records for a V0 demonstration
+    SeedDemo,
+    /// Attach a draft proposal to a guest, interview, or content record
+    Propose {
+        /// Stable UUID of the target MK Ideas record
+        #[arg(long)]
+        target: String,
+        /// Target event kind: 30803 person, 30804 interview, or 30805 content
+        #[arg(long)]
+        target_kind: u32,
+        /// Agent identity shown to human reviewers
+        #[arg(long)]
+        agent: String,
+        /// Proposal category, such as guest-research or timestamped-clips
+        #[arg(long)]
+        proposal_type: String,
+        /// Concise human-review summary
+        #[arg(long)]
+        summary: String,
+        /// Source URL, document identifier, or transcript reference; repeatable
+        #[arg(long, required = true)]
+        provenance: Vec<String>,
+        /// Optional draft body (research memo, caption set, or other proposed copy)
+        #[arg(long)]
+        draft: Option<String>,
+        /// Optional JSON array of {start,end,title,caption} clip proposals
+        #[arg(long)]
+        clips_json: Option<String>,
+    },
+}
+
 /// Normalize hand-authored `BUZZ_AUTH_TAG` input to strict JSON.
 ///
 /// `.env` files and shell exports sometimes carry the tag in the unquoted
@@ -2094,6 +2131,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Media(sub) => commands::upload::dispatch_media(sub, &client).await,
         Cmd::Upload(sub) => commands::upload::dispatch(sub, &client).await,
         Cmd::Mem(sub) => commands::mem::dispatch(sub, &client).await,
+        Cmd::MkIdeas(sub) => commands::mkideas::dispatch(sub, &client).await,
         Cmd::Moderation(sub) => commands::moderation::dispatch(sub, &client, &cli.format).await,
         Cmd::Pack(_) => unreachable!("handled above"),
     }
@@ -2233,6 +2271,7 @@ mod tests {
             "media",
             "mem",
             "messages",
+            "mk-ideas",
             "moderation",
             "notes",
             "pack",
@@ -2441,6 +2480,7 @@ mod tests {
             ("issues", 6),
             ("media", 1),
             ("messages", 8),
+            ("mk-ideas", 2),
             ("pack", 2),
             ("patches", 4),
             ("pr", 5),

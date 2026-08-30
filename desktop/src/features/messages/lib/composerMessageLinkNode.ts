@@ -6,6 +6,7 @@ import { find as findLinks } from "linkifyjs";
 
 import {
   buildIssueLink,
+  buildMkIdeasLink,
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
@@ -35,9 +36,9 @@ export type ComposerMessageLinkAttributes = {
 };
 
 const BARE_BUZZ_LINK_AT_START =
-  /^buzz:\/\/(?:message\?|channel\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^buzz:\/\/(?:message\?|channel\/|(?:pr|issue|repo|project|mkideas)\?)[^\s<>"')\]}*]+/i;
 const BUZZ_LINK_SUFFIX_AT_START =
-  /^:\/\/(?:message\?|channel\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^:\/\/(?:message\?|channel\/|(?:pr|issue|repo|project|mkideas)\?)[^\s<>"')\]}*]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 function trimBareBuzzLink(value: string): string {
@@ -102,6 +103,11 @@ export function resolveComposerMessageLinkAttributes(
       return {
         channelName: "",
         href: buildIssueLink(entity.value),
+      };
+    case "mkideas":
+      return {
+        channelName: "",
+        href: buildMkIdeasLink(entity.value),
       };
   }
 }
@@ -395,6 +401,15 @@ function composerLinkPresentation(
     entity.value.type === "repo" || entity.value.type === "project"
       ? ""
       : entity.value.id.slice(0, 8);
+  if (entity.value.type === "mkideas") {
+    return {
+      ariaLabel: `Open MK Ideas record ${shortId}`,
+      channelName: "",
+      dataAttributes: { "data-buzz-link-kind": "mkideas" },
+      icon: "project",
+      label: `MK Ideas · ${shortId}`,
+    };
+  }
   return {
     ariaLabel:
       entity.value.type === "repo"

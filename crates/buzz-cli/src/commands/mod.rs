@@ -7,6 +7,7 @@ pub mod feed;
 pub mod issues;
 pub mod mem;
 pub mod messages;
+pub mod mkideas;
 pub mod moderation;
 pub mod notes;
 pub mod pack;

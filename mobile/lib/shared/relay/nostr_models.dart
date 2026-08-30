@@ -28,6 +28,17 @@ abstract final class EventKind {
   static const readState = 30078;
   static const eventReminder = 30300;
   static const userStatus = 30315;
+  // MK Ideas community-wide addressable state.
+  static const mkGoal = 30800;
+  static const mkOperationalProject = 30801;
+  static const mkTask = 30802;
+  static const mkPerson = 30803;
+  static const mkInterview = 30804;
+  static const mkContent = 30805;
+  static const mkMeeting = 30806;
+  static const mkDecision = 30807;
+  static const mkKnowledge = 30808;
+  static const mkApproval = 30809;
   static const dmVisibility = 30622;
   static const streamMessageV2 = 40002;
   static const channelThreadSummary = 39005;
@@ -47,6 +58,12 @@ abstract final class EventKind {
   static const huddleParticipantJoined = 48101;
   static const huddleParticipantLeft = 48102;
   static const huddleEnded = 48103;
+  // MK Ideas human actions and service-authored outputs.
+  static const mkApprovalAction = 48200;
+  static const mkAgentProposal = 48201;
+  static const mkMigrationReceipt = 48202;
+  static const mkGeneratedSummary = 48203;
+  static const mkSystemActivity = 48204;
 
   /// Event kinds that represent user-visible channel messages.
   static const channelMessageEventKinds = [

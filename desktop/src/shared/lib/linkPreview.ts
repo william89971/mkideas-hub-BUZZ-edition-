@@ -1,5 +1,6 @@
 import {
   buildIssueLink,
+  buildMkIdeasLink,
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
@@ -13,6 +14,7 @@ export type SupportedLinkPreviewKind =
   | "buzz-issue"
   | "buzz-repository"
   | "buzz-project"
+  | "buzz-mkideas"
   | "github-pull-request"
   | "github-issue"
   | "github-repository"
@@ -39,6 +41,7 @@ export type SupportedLinkPreview = {
     | "Task"
     | "repo"
     | "project"
+    | "record"
     | "file"
     | "folder"
     | "document"
@@ -51,9 +54,9 @@ export type SupportedLinkPreview = {
 // their distinctive path shape (`/git/<64-hex-pubkey>/<repo>`) rather than by
 // hostname, and require an explicit scheme. Generic previews remain HTTPS-only.
 const SUPPORTED_URL_RE =
-  /(^|[\s([{<>"'])(https:\/\/[^\s<>"'\]]+|https?:\/\/[^\s<>"'\]]+\/git\/[a-f0-9]{64}\/[^\s<>"'\]]+|buzz:\/\/(?:pr|issue|repo|project)\?[^\s<>"'\]]+|(?:(?:www\.)?github\.com|(?:www\.)?linear\.app|drive\.google\.com|docs\.google\.com)\/[^\s<>"'\]]+)/gi;
+  /(^|[\s([{<>"'])(https:\/\/[^\s<>"'\]]+|https?:\/\/[^\s<>"'\]]+\/git\/[a-f0-9]{64}\/[^\s<>"'\]]+|buzz:\/\/(?:pr|issue|repo|project|mkideas)\?[^\s<>"'\]]+|(?:(?:www\.)?github\.com|(?:www\.)?linear\.app|drive\.google\.com|docs\.google\.com)\/[^\s<>"'\]]+)/gi;
 const MARKDOWN_SUPPORTED_LINK_RE =
-  /!?\[([^\]\n]+)\]\((https:\/\/[^)\s<>"']+|https?:\/\/[^)\s<>"']+\/git\/[a-f0-9]{64}\/[^)\s<>"']+|buzz:\/\/(?:pr|issue|repo|project)\?[^)\s<>"']+|(?:(?:www\.)?github\.com|(?:www\.)?linear\.app|drive\.google\.com|docs\.google\.com)\/[^)\s<>"']+)\)/gi;
+  /!?\[([^\]\n]+)\]\((https:\/\/[^)\s<>"']+|https?:\/\/[^)\s<>"']+\/git\/[a-f0-9]{64}\/[^)\s<>"']+|buzz:\/\/(?:pr|issue|repo|project|mkideas)\?[^)\s<>"']+|(?:(?:www\.)?github\.com|(?:www\.)?linear\.app|drive\.google\.com|docs\.google\.com)\/[^)\s<>"']+)\)/gi;
 const MAX_PREVIEWS = 8;
 
 type HiddenRange = {
@@ -300,6 +303,9 @@ function createPreview(
  * markdown-label override it must not overwrite.
  */
 export function buzzEntityFallbackTitle(link: ParsedEntityLink): string {
+  if (link.type === "mkideas") {
+    return `MK Ideas record ${link.id.slice(0, 8)}`;
+  }
   if (link.type === "repo" || link.type === "project") return link.dtag;
   return `${link.dtag} #${link.id.slice(0, 8)}`;
 }
@@ -315,6 +321,15 @@ function parseBuzzEntityPreview(href: string): SupportedLinkPreview | null {
 
   const link = parsed.value;
   const title = buzzEntityFallbackTitle(link);
+  if (link.type === "mkideas") {
+    return {
+      kind: "buzz-mkideas",
+      href: buildMkIdeasLink(link),
+      provider: "MK Ideas",
+      title,
+      typeLabel: "record",
+    };
+  }
   if (link.type === "pr") {
     return {
       kind: "buzz-pull-request",

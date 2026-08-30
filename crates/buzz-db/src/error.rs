@@ -33,6 +33,21 @@ pub enum DbError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    /// An MK Ideas state update did not advance the current shared head.
+    #[error(
+        "MK Ideas write conflict: current version is {current_version}, current event is {current_event_id:?}"
+    )]
+    MkIdeasConflict {
+        /// Authoritative version observed while holding the entity-head lock.
+        current_version: i64,
+        /// Authoritative event id, encoded as lowercase hex when present.
+        current_event_id: Option<String>,
+    },
+
+    /// An MK Ideas domain transition failed validation inside the head transaction.
+    #[error("MK Ideas validation error: {0}")]
+    MkIdeasValidation(String),
+
     /// The caller lacks permission for the requested operation.
     #[error("access denied: {0}")]
     AccessDenied(String),

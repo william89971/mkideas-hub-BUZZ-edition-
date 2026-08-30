@@ -41,6 +41,12 @@ export const KIND_HUDDLE_STARTED = 48100;
 export const KIND_HUDDLE_PARTICIPANT_JOINED = 48101;
 export const KIND_HUDDLE_PARTICIPANT_LEFT = 48102;
 export const KIND_HUDDLE_ENDED = 48103;
+// MK Ideas human actions and service-authored outputs.
+export const KIND_MK_APPROVAL_ACTION = 48200;
+export const KIND_MK_AGENT_PROPOSAL = 48201;
+export const KIND_MK_MIGRATION_RECEIPT = 48202;
+export const KIND_MK_GENERATED_SUMMARY = 48203;
+export const KIND_MK_SYSTEM_ACTIVITY = 48204;
 // NIP-78 application-specific data. All use kind 30078; the relay
 // differentiates them by d-tag ("read-state:<slotId>", "channel-sections",
 // "channel-mutes", "channel-stars", "channel-sort", "project-sidebar-membership").
@@ -63,6 +69,17 @@ export const KIND_MANAGED_AGENT = 30177;
 // body) so an ordinary team edit cannot disturb catalog share state.
 export const KIND_TEAM_CATALOG = 30178;
 export const KIND_USER_STATUS = 30315;
+// MK Ideas community-wide addressable operational state.
+export const KIND_MK_GOAL = 30800;
+export const KIND_MK_OPERATIONAL_PROJECT = 30801;
+export const KIND_MK_TASK = 30802;
+export const KIND_MK_PERSON = 30803;
+export const KIND_MK_INTERVIEW = 30804;
+export const KIND_MK_CONTENT = 30805;
+export const KIND_MK_MEETING = 30806;
+export const KIND_MK_DECISION = 30807;
+export const KIND_MK_KNOWLEDGE = 30808;
+export const KIND_MK_APPROVAL = 30809;
 export const KIND_AGENT_OBSERVER_FRAME = 24200;
 export const KIND_AGENT_TURN_METRIC = 44200;
 export const KIND_EVENT_REMINDER = 30300;

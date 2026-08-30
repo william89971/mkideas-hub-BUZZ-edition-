@@ -156,6 +156,13 @@ function entityLinkPresentation(link: ParsedEntityLink) {
         label: link.dtag,
         tooltipFooter: "Project",
       };
+    case "mkideas":
+      return {
+        ariaLabel: `Open MK Ideas record ${link.id.slice(0, 8)}`,
+        icon: "project" as const,
+        label: `MK Ideas · ${link.id.slice(0, 8)}`,
+        tooltipFooter: "MK Ideas operational record",
+      };
   }
 }
 
@@ -165,9 +172,17 @@ function entityLinkPresentation(link: ParsedEntityLink) {
  * route id, so no read-model resolution is needed.
  */
 export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
-  const { goProject } = useAppNavigation();
+  const { goPeople, goProject, goStudio } = useAppNavigation();
   return React.useCallback(
     (link: ParsedEntityLink) => {
+      if (link.type === "mkideas") {
+        if (link.kind === 30803) {
+          void goPeople({ force: true });
+        } else {
+          void goStudio({ force: true });
+        }
+        return;
+      }
       const tab =
         (link.type === "repo" || link.type === "project") && link.tab
           ? link.tab
@@ -186,7 +201,7 @@ export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
           : {}),
       });
     },
-    [goProject],
+    [goPeople, goProject, goStudio],
   );
 }
 

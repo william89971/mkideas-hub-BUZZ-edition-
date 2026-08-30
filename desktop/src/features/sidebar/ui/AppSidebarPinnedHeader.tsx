@@ -1,8 +1,12 @@
-import { Activity, Bot, Folders, Inbox, Zap } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  CalendarCheck,
+  Clapperboard,
+  ContactRound,
+  MessageSquare,
+} from "lucide-react";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
-import { SidebarProjectsSection } from "@/features/sidebar/ui/SidebarProjectsSection";
-import { FeatureGate } from "@/shared/features";
 import type { Channel, SearchHit } from "@/shared/api/types";
 import {
   SidebarHeader,
@@ -20,7 +24,11 @@ type SidebarSelectedView =
   | "agents"
   | "workflows"
   | "pulse"
-  | "projects";
+  | "projects"
+  | "work"
+  | "people"
+  | "studio"
+  | "team";
 
 type AppSidebarPinnedHeaderProps = {
   channelLabels: Record<string, string>;
@@ -40,12 +48,11 @@ type AppSidebarPinnedHeaderProps = {
 
 type AppSidebarPrimaryMenuProps = {
   homeBadgeCount: number;
-  onSelectAgents: () => void;
-  onSelectHome: () => void;
-  onSelectProjects: () => void;
-  onSelectPulse: () => void;
-  onSelectWorkflows: () => void;
-  projectsOverviewActive: boolean;
+  onSelectPeople: () => void;
+  onSelectStudio: () => void;
+  onSelectTeam: () => void;
+  onSelectToday: () => void;
+  onSelectWork: () => void;
   selectedView: SidebarSelectedView;
 };
 
@@ -90,100 +97,93 @@ export function AppSidebarPinnedHeader({
 
 export function AppSidebarPrimaryMenu({
   homeBadgeCount,
-  onSelectAgents,
-  onSelectHome,
-  onSelectProjects,
-  onSelectPulse,
-  onSelectWorkflows,
-  projectsOverviewActive,
+  onSelectPeople,
+  onSelectStudio,
+  onSelectTeam,
+  onSelectToday,
+  onSelectWork,
   selectedView,
 }: AppSidebarPrimaryMenuProps) {
   return (
-    <>
-      <SidebarHeader
-        className="relative z-40 cursor-default select-none px-2 pb-0 pt-0"
-        data-tauri-drag-region
-        data-testid="sidebar-primary-menu"
-      >
-        <SidebarMenu className="sidebar-primary-menu pb-2">
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              className="data-[active=true]:font-normal"
-              isActive={selectedView === "home"}
-              onClick={onSelectHome}
-              tooltip="Inbox"
-              type="button"
+    <SidebarHeader
+      className="relative z-40 cursor-default select-none px-2 pb-0 pt-0"
+      data-tauri-drag-region
+      data-testid="sidebar-primary-menu"
+    >
+      <SidebarMenu className="sidebar-primary-menu pb-2">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            className="data-[active=true]:font-normal"
+            isActive={selectedView === "home"}
+            onClick={onSelectToday}
+            tooltip="Today"
+            type="button"
+          >
+            <CalendarCheck className="h-4 w-4" />
+            <SidebarMenuLabel>Today</SidebarMenuLabel>
+          </SidebarMenuButton>
+          {homeBadgeCount > 0 ? (
+            <SidebarMenuBadge
+              className="right-2 rounded-full bg-primary/15 px-1.5 text-2xs text-primary peer-data-[active=true]/menu-button:bg-sidebar-active-foreground/20 peer-data-[active=true]/menu-button:text-sidebar-active-foreground"
+              data-testid="sidebar-home-count"
             >
-              <Inbox className="h-4 w-4" />
-              <SidebarMenuLabel>Inbox</SidebarMenuLabel>
-            </SidebarMenuButton>
-            {homeBadgeCount > 0 ? (
-              <SidebarMenuBadge
-                className="right-2 rounded-full bg-primary/15 px-1.5 text-2xs text-primary peer-data-[active=true]/menu-button:bg-sidebar-active-foreground/20 peer-data-[active=true]/menu-button:text-sidebar-active-foreground"
-                data-testid="sidebar-home-count"
-              >
-                {Math.min(homeBadgeCount, 99)}
-              </SidebarMenuBadge>
-            ) : null}
-          </SidebarMenuItem>
-          <FeatureGate feature="pulse">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                data-testid="open-pulse-view"
-                isActive={selectedView === "pulse"}
-                onClick={onSelectPulse}
-                tooltip="Pulse"
-                type="button"
-              >
-                <Activity className="h-4 w-4" />
-                <SidebarMenuLabel>Pulse</SidebarMenuLabel>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </FeatureGate>
-          <FeatureGate feature="projects">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                data-testid="open-projects-view"
-                isActive={selectedView === "projects" && projectsOverviewActive}
-                onClick={onSelectProjects}
-                tooltip="Projects"
-                type="button"
-              >
-                <Folders className="h-4 w-4" />
-                <SidebarMenuLabel>Projects</SidebarMenuLabel>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </FeatureGate>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              className="data-[active=true]:font-normal"
-              data-testid="open-agents-view"
-              isActive={selectedView === "agents"}
-              onClick={onSelectAgents}
-              tooltip="Agents"
-              type="button"
-            >
-              <Bot className="h-4 w-4" />
-              <SidebarMenuLabel>Agents</SidebarMenuLabel>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <FeatureGate feature="workflows">
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                data-testid="open-workflows-view"
-                isActive={selectedView === "workflows"}
-                onClick={onSelectWorkflows}
-                tooltip="Workflows"
-                type="button"
-              >
-                <Zap className="h-4 w-4" />
-                <SidebarMenuLabel>Workflows</SidebarMenuLabel>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </FeatureGate>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarProjectsSection />
-    </>
+              {Math.min(homeBadgeCount, 99)}
+            </SidebarMenuBadge>
+          ) : null}
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            data-testid="open-work-view"
+            isActive={selectedView === "work"}
+            onClick={onSelectWork}
+            tooltip="Work"
+            type="button"
+          >
+            <BriefcaseBusiness className="h-4 w-4" />
+            <SidebarMenuLabel>Work</SidebarMenuLabel>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            data-testid="open-people-view"
+            isActive={selectedView === "people"}
+            onClick={onSelectPeople}
+            tooltip="People"
+            type="button"
+          >
+            <ContactRound className="h-4 w-4" />
+            <SidebarMenuLabel>People</SidebarMenuLabel>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            data-testid="open-studio-view"
+            isActive={selectedView === "studio"}
+            onClick={onSelectStudio}
+            tooltip="Studio"
+            type="button"
+          >
+            <Clapperboard className="h-4 w-4" />
+            <SidebarMenuLabel>Studio</SidebarMenuLabel>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            data-testid="open-team-view"
+            isActive={
+              selectedView === "team" ||
+              selectedView === "channel" ||
+              selectedView === "messages"
+            }
+            onClick={onSelectTeam}
+            tooltip="Team"
+            type="button"
+          >
+            <MessageSquare className="h-4 w-4" />
+            <SidebarMenuLabel>Team</SidebarMenuLabel>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarHeader>
   );
 }
