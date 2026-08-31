@@ -192,9 +192,9 @@ fn validate_cursor(projection: Projection, kinds: &[u32], cursor: &str) -> Resul
             let (created_at, event_id) = cursor.split_once(':').ok_or_else(|| {
                 "operations cursor must be `<unix-seconds>:<64-hex-event-id>`".to_string()
             })?;
-            created_at.parse::<i64>().map_err(|_| {
-                "operations cursor timestamp must be Unix seconds".to_string()
-            })?;
+            created_at
+                .parse::<i64>()
+                .map_err(|_| "operations cursor timestamp must be Unix seconds".to_string())?;
             let event_id = hex::decode(event_id)
                 .map_err(|_| "operations cursor event id must be hex".to_string())?;
             if event_id.len() != 32 {
@@ -341,7 +341,7 @@ mod tests {
             Tag::parse(["status", "prospect"]).expect("status tag"),
         ])
         .sign_with_keys(&Keys::generate())
-            .expect("signed person")
+        .expect("signed person")
     }
 
     fn signed_operation(community: &str) -> Event {
@@ -526,11 +526,8 @@ mod tests {
             Some(1),
         )
         .expect("valid operations args");
-        let parsed = parse_response(
-            json!({"events": [&event], "nextCursor": cursor}),
-            &args,
-        )
-        .expect("valid operations page");
+        let parsed = parse_response(json!({"events": [&event], "nextCursor": cursor}), &args)
+            .expect("valid operations page");
         assert_eq!(parsed.events, vec![event]);
     }
 }
