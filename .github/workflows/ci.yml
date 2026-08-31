@@ -283,7 +283,15 @@ jobs:
       - name: Desktop E2E build
         run: pnpm -C desktop build:e2e
       - name: Desktop smoke e2e
-        run: cd desktop && pnpm exec playwright test --project=smoke --shard=${{ matrix.shard }}/4
+        run: |
+          cd desktop
+          if [ "$GITHUB_REPOSITORY" = "block/buzz" ]; then
+            pnpm exec playwright test --project=smoke --shard=${{ matrix.shard }}/4
+          else
+            # The MK Ideas fork intentionally replaces Buzz developer/admin
+            # navigation, so qualify the accepted five-area product instead.
+            pnpm exec playwright test --project=smoke tests/e2e/mkideas-v0.spec.ts
+          fi
       - name: Summarize flaky tests
         if: ${{ !cancelled() }}
         run: node scripts/summarize-flaky-tests.mjs playwright-report.json "Desktop Smoke E2E (${{ matrix.shard }})"
@@ -409,7 +417,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [changes, desktop-e2e-relay]
-    if: github.event_name == 'push' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.desktop-rust == 'true' || needs.changes.outputs.rust == 'true'
+    # The MK Ideas fork validates its five-area shell above and the relay/data
+    # plane in Backend Integration. These upstream shards target hidden Buzz
+    # agent-management screens and remain authoritative in block/buzz.
+    if: github.repository == 'block/buzz' && (github.event_name == 'push' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.desktop-rust == 'true' || needs.changes.outputs.rust == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -586,7 +597,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [changes, desktop-e2e-integration-shard]
-    if: always() && (github.event_name == 'push' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.desktop-rust == 'true' || needs.changes.outputs.rust == 'true')
+    if: always() && github.repository == 'block/buzz' && (github.event_name == 'push' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.desktop-rust == 'true' || needs.changes.outputs.rust == 'true')
     permissions:
       contents: read
     steps:
