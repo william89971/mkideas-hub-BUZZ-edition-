@@ -2484,6 +2484,10 @@ mod tests {
             vec!["assign", "create", "get", "list", "status", "unassign"]
         );
         assert_eq!(names(&cmd, "media"), vec!["get"]);
+        assert_eq!(
+            names(&cmd, "mk-ideas"),
+            vec!["heads", "history", "propose", "seed-demo"]
+        );
         assert_eq!(names(&cmd, "upload"), vec!["file"]);
         assert_eq!(names(&cmd, "pack"), vec!["inspect", "validate"]);
         assert_eq!(
@@ -2513,7 +2517,7 @@ mod tests {
             ("issues", 6),
             ("media", 1),
             ("messages", 8),
-            ("mk-ideas", 2),
+            ("mk-ideas", 4),
             ("pack", 2),
             ("patches", 4),
             ("pr", 5),
