@@ -250,7 +250,15 @@ pub async fn search(pool: &PgPool, query: &SearchQuery) -> Result<SearchResult, 
     push_tsquery(&mut qb, query.mode, &search_text);
     qb.push(" AS query) AS search_query WHERE community_id = ");
     qb.push_bind(*query.community.as_uuid());
-    qb.push(" AND deleted_at IS NULL AND search_tsv @@ search_query.query");
+    qb.push(
+        " AND deleted_at IS NULL \
+         AND (kind NOT BETWEEN 30800 AND 30899 OR EXISTS (\
+             SELECT 1 FROM mk_entity_heads mkh \
+             WHERE mkh.community_id = events.community_id \
+               AND mkh.current_event_id = events.id\
+         )) \
+         AND search_tsv @@ search_query.query",
+    );
 
     // Channel scope — see `ChannelScope` doc for the four-case mapping. The
     // emitted SQL fragments are identical to the legacy 2x2 tuple for the

@@ -21,6 +21,8 @@
 //! the guard against parallel adds (e.g. `xargs -P`).
 
 mod deletions;
+mod migration;
+mod migration_submit;
 
 use std::sync::Arc;
 
@@ -87,6 +89,11 @@ enum Command {
     Deletions {
         #[command(subcommand)]
         command: deletions::DeletionsCommand,
+    },
+    /// Offline-safe MK Ideas Command Center migration controls.
+    Migration {
+        #[command(subcommand)]
+        command: migration::MigrationCommand,
     },
     /// Emit missing kind:39000/39001/39002 channel discovery events, or
     /// republish only a targeted channel's kind:39002 roster.
@@ -161,6 +168,7 @@ async fn run(cli: Cli) -> Result<i32> {
             command: ProductFeedbackCommand::List { limit },
         } => cmd_list_product_feedback(limit).await,
         Command::Deletions { command } => deletions::run(command).await,
+        Command::Migration { command } => migration::run(command).await,
         Command::ReconcileChannels { channel, relay_key } => {
             reconcile_channels(channel, relay_key).await?;
             Ok(0)

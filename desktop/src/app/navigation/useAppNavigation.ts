@@ -117,6 +117,25 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goMkIdeasArea = React.useCallback(
+    (
+      area: "today" | "work" | "people" | "studio",
+      behavior?: NavigationBehavior,
+    ) => {
+      switch (area) {
+        case "work":
+          return goWork(behavior);
+        case "people":
+          return goPeople(behavior);
+        case "studio":
+          return goStudio(behavior);
+        case "today":
+          return goHome(behavior);
+      }
+    },
+    [goHome, goPeople, goStudio, goWork],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -472,10 +491,11 @@ export function useAppNavigation() {
         force: behavior?.force,
         goChannel,
         goForumPost,
+        goMkIdeasArea,
         query: behavior?.query,
         signal: behavior?.signal,
       }),
-    [goChannel, goForumPost],
+    [goChannel, goForumPost, goMkIdeasArea],
   );
 
   return {

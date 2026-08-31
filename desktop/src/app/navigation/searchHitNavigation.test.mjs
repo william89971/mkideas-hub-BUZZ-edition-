@@ -32,6 +32,21 @@ const plainMessage = {
   threadRootId: "thread-root",
 };
 
+const mkIdeasTask = {
+  ...forumComment,
+  channelId: null,
+  channelName: null,
+  content: JSON.stringify({
+    schema_version: 2,
+    entity_id: "11111111-1111-4111-8111-111111111111",
+    version: 2,
+    status: "in-progress",
+    title: "Confirm interview brief",
+  }),
+  eventId: "mk-task",
+  kind: 30802,
+};
+
 test("search-hit navigation preserves forced message routing while active", async () => {
   clearSearchHitEventCache();
   const calls = [];
@@ -57,6 +72,24 @@ test("search-hit navigation preserves forced message routing while active", asyn
     },
   ]);
   assert.equal(getCachedSearchHitEvent("message")?.id, "message");
+});
+
+test("typed MK Ideas search hits route Work records without a channel", async () => {
+  clearSearchHitEventCache();
+  const calls = [];
+  const result = await openSearchHitWithNavigation(mkIdeasTask, {
+    force: true,
+    goChannel: async () => false,
+    goForumPost: async () => false,
+    goMkIdeasArea: async (area, options) => {
+      calls.push({ area, options });
+      return true;
+    },
+  });
+
+  assert.equal(result, true);
+  assert.deepEqual(calls, [{ area: "work", options: { force: true } }]);
+  assert.equal(getCachedSearchHitEvent("mk-task"), null);
 });
 
 test("search-hit navigation carries trimmed highlight state and forces repeated activations", async () => {

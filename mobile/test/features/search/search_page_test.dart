@@ -510,7 +510,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('search-empty-state')),
-        matching: find.text('Search messages, channels, and people'),
+        matching: find.text('Search MK Ideas records and Team conversations'),
       ),
       findsOneWidget,
     );

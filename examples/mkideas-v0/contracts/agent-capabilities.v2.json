@@ -1,0 +1,84 @@
+{
+  "schema_version": 2,
+  "contract_id": "org.mkideas.agent-capabilities",
+  "contract_version": "2.0.0-fixture",
+  "authority": {
+    "source": "relay_resolved_managed_agent_persona",
+    "never_trust_payload_display_name": true,
+    "persona_assignment_must_be_owner_controlled": true,
+    "signer_persona_must_match": true,
+    "human_event_kinds": [48200],
+    "protected_state_kind_ranges": [[30800, 30899]],
+    "service_event_kinds": {
+      "proposal_result": 48201,
+      "generated_summary": 48203,
+      "agent_run_activity": 48204
+    },
+    "forbidden_agent_actions": [
+      "approve",
+      "reject",
+      "send_external_communication",
+      "publish",
+      "clear_dnc",
+      "impersonate_human",
+      "write_protected_state"
+    ]
+  },
+  "personas": {
+    "guest-researcher": {
+      "display_name": "Guest Researcher",
+      "output_event_kinds": [48201, 48204],
+      "target_kinds": [30803],
+      "proposal_types": ["guest_research"],
+      "human_review_required": true
+    },
+    "outreach-drafter": {
+      "display_name": "Outreach Drafter",
+      "output_event_kinds": [48201, 48204],
+      "target_kinds": [30803],
+      "proposal_types": ["outreach_draft", "outreach_follow_up"],
+      "human_review_required": true,
+      "additional_constraints": ["dnc_must_be_false", "draft_only", "no_delivery_surface"]
+    },
+    "interview-producer": {
+      "display_name": "Interview Producer",
+      "output_event_kinds": [48201, 48204],
+      "target_kinds": [30803, 30804],
+      "proposal_types": ["interview_brief", "interview_questions", "interview_run_of_show"],
+      "human_review_required": true
+    },
+    "content-clip-copilot": {
+      "display_name": "Content / Clip Copilot",
+      "output_event_kinds": [48201, 48204],
+      "target_kinds": [30804, 30805],
+      "proposal_types": ["timestamped_clips", "caption_draft", "content_variants"],
+      "human_review_required": true,
+      "additional_constraints": ["immutable_transcript_reference_required", "timestamps_within_transcript"]
+    },
+    "operations-briefing-assistant": {
+      "display_name": "Operations Briefing Assistant",
+      "output_event_kinds": [48203, 48204],
+      "target_kinds": [],
+      "proposal_types": [],
+      "summary_types": ["operations_briefing"],
+      "human_review_required": false,
+      "additional_constraints": ["informational_only", "no_state_change"]
+    }
+  },
+  "run_statuses": [
+    "queued",
+    "running",
+    "retrying",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "timed_out"
+  ],
+  "review_states": ["pending", "approved", "rejected", "stale", "cancelled"],
+  "agent_writable_proposal_statuses": ["proposed"],
+  "agent_writable_review_states": ["pending", "stale"],
+  "retry_semantics": {
+    "automatic": "reuse_run_id_and_increment_attempt",
+    "human_rerun": "new_run_id_with_retry_of_run_id"
+  }
+}

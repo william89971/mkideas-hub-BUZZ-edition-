@@ -7,7 +7,8 @@
  *   buzz://project?owner=<owner-pubkey>&d=<project-dtag>[&tab=<tab>]
  *   buzz://pr?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
  *   buzz://issue?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
- *   buzz://mkideas?kind=<state-kind>&id=<entity-uuid>[&proposal=<proposal-uuid>]
+ *   buzz://mkideas/entity?community=<h>&kind=<state-kind>&d=<entity-uuid>[&event=<event-id>]
+ *   buzz://mkideas?kind=<state-kind>&id=<entity-uuid>[&proposal=<proposal-uuid>] (legacy read-only form)
  *
  * `owner` + `d` identify the NIP-34 repository coordinate
  * (`30617:<owner>:<d>`) or the NIP-MP project coordinate
@@ -56,10 +57,53 @@ export type ParsedEntityLink =
   | { type: "project"; owner: string; dtag: string; tab?: EntityLinkTab }
   | {
       type: "mkideas";
-      kind: 30803 | 30804 | 30805 | 30809;
+      kind: MkIdeasEntityKind;
       id: string;
+      community?: string;
+      eventId?: string;
       proposalId?: string;
+      legacy?: true;
     };
+
+export type MkIdeasEntityKind =
+  | 30800
+  | 30801
+  | 30802
+  | 30803
+  | 30804
+  | 30805
+  | 30806
+  | 30807
+  | 30808
+  | 30809;
+
+export type MkIdeasArea = "today" | "work" | "people" | "studio";
+
+const MKIDEAS_KIND_PRESENTATION: Record<
+  MkIdeasEntityKind,
+  { area: MkIdeasArea; label: string }
+> = {
+  30800: { area: "work", label: "Goal" },
+  30801: { area: "work", label: "Operational project" },
+  30802: { area: "work", label: "Task" },
+  30803: { area: "people", label: "Guest" },
+  30804: { area: "studio", label: "Interview" },
+  30805: { area: "studio", label: "Content" },
+  30806: { area: "work", label: "Meeting" },
+  30807: { area: "work", label: "Decision" },
+  30808: { area: "today", label: "Knowledge" },
+  30809: { area: "today", label: "Approval" },
+};
+
+/** Return the permanent MK Ideas product area that owns a state kind. */
+export function mkIdeasAreaForKind(kind: MkIdeasEntityKind): MkIdeasArea {
+  return MKIDEAS_KIND_PRESENTATION[kind].area;
+}
+
+/** Return the human-facing singular label for an MK Ideas state kind. */
+export function mkIdeasLabelForKind(kind: MkIdeasEntityKind): string {
+  return MKIDEAS_KIND_PRESENTATION[kind].label;
+}
 
 export type EntityLinkParseResult =
   | { ok: true; value: ParsedEntityLink }
@@ -70,7 +114,11 @@ const GIT_OBJECT_ID_RE = /^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/;
 const DTAG_RE = /^[a-zA-Z0-9._-]{1,64}$/;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MKIDEAS_LINK_KINDS = new Set([30803, 30804, 30805, 30809]);
+const MKIDEAS_LINK_KINDS = new Set<number>([
+  30800, 30801, 30802, 30803, 30804, 30805, 30806, 30807, 30808, 30809,
+]);
+const COMMUNITY_RE =
+  /^(?:[a-z0-9](?:[a-z0-9.-]{0,252}[a-z0-9])?)(?::(?:[1-9][0-9]{0,4}))?$/i;
 
 function isValidDtag(dtag: string): boolean {
   return DTAG_RE.test(dtag) && !dtag.startsWith(".") && !dtag.includes("..");
@@ -164,10 +212,18 @@ export function buildIssueLink(input: {
   return `buzz://issue?id=${input.id.toLowerCase()}&owner=${input.owner.toLowerCase()}&d=${input.dtag}`;
 }
 
-/** Build a community-relative link to an MK Ideas operational record. */
+/**
+ * Build a stable MK Ideas operational-record link.
+ *
+ * New callers provide `community` and receive the canonical cross-device
+ * form. The community-less branch exists only so old parsed links can still
+ * be normalized by message previews while legacy data ages out.
+ */
 export function buildMkIdeasLink(input: {
-  kind: 30803 | 30804 | 30805 | 30809;
+  kind: MkIdeasEntityKind;
   id: string;
+  community?: string;
+  eventId?: string;
   proposalId?: string;
 }): string {
   if (!MKIDEAS_LINK_KINDS.has(input.kind)) {
@@ -179,7 +235,26 @@ export function buildMkIdeasLink(input: {
   if (input.proposalId && !UUID_RE.test(input.proposalId)) {
     throw new Error("entityLink: MK Ideas proposal must be a UUID");
   }
-  return `buzz://mkideas?kind=${input.kind}&id=${input.id.toLowerCase()}${input.proposalId ? `&proposal=${input.proposalId.toLowerCase()}` : ""}`;
+  if (input.eventId && !HEX64_RE.test(input.eventId)) {
+    throw new Error("entityLink: MK Ideas event must be a 64-char hex id");
+  }
+  if (!input.community) {
+    return `buzz://mkideas?kind=${input.kind}&id=${input.id.toLowerCase()}${input.proposalId ? `&proposal=${input.proposalId.toLowerCase()}` : ""}`;
+  }
+  const community = input.community.toLowerCase().replace(/\.$/, "");
+  if (!COMMUNITY_RE.test(community)) {
+    throw new Error("entityLink: invalid MK Ideas community");
+  }
+  const params = new URLSearchParams({
+    community,
+    kind: String(input.kind),
+    d: input.id.toLowerCase(),
+  });
+  if (input.eventId) params.set("event", input.eventId.toLowerCase());
+  if (input.proposalId) {
+    params.set("proposal", input.proposalId.toLowerCase());
+  }
+  return `buzz://mkideas/entity?${params.toString()}`;
 }
 
 /**
@@ -194,7 +269,8 @@ export function isEntityLink(href: string | undefined | null): boolean {
     href.startsWith("buzz://issue?") ||
     href.startsWith("buzz://repo?") ||
     href.startsWith("buzz://project?") ||
-    href.startsWith("buzz://mkideas?")
+    href.startsWith("buzz://mkideas?") ||
+    href.startsWith("buzz://mkideas/entity?")
   );
 }
 
@@ -237,8 +313,15 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
   }
   const isCoordinateHost = host === "repo" || host === "project";
 
-  // Require empty/root path — path segments are reserved for future versioning.
-  if (parsed.pathname !== "" && parsed.pathname !== "/") {
+  const isCanonicalMkIdeas =
+    host === "mkideas" && parsed.pathname === "/entity";
+  // MK Ideas reserves `/entity` for its community-aware coordinate. All other
+  // entity link hosts remain pathless.
+  if (
+    !isCanonicalMkIdeas &&
+    parsed.pathname !== "" &&
+    parsed.pathname !== "/"
+  ) {
     return { ok: false, reason: "unexpected-path" };
   }
 
@@ -251,7 +334,9 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
   const KNOWN_REPO_PARAMS = new Set(["owner", "d", "tab", "commit"]);
   const KNOWN_PROJECT_PARAMS = new Set(["owner", "d", "tab"]);
   const KNOWN_EVENT_PARAMS = new Set(["id", "owner", "d"]);
-  const KNOWN_MKIDEAS_PARAMS = new Set(["kind", "id", "proposal"]);
+  const KNOWN_MKIDEAS_PARAMS = isCanonicalMkIdeas
+    ? new Set(["community", "kind", "d", "event", "proposal"])
+    : new Set(["kind", "id", "proposal"]);
   const knownParams =
     host === "mkideas"
       ? KNOWN_MKIDEAS_PARAMS
@@ -275,7 +360,7 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
 
   if (host === "mkideas") {
     const kind = Number(parsed.searchParams.get("kind"));
-    const id = parsed.searchParams.get("id");
+    const id = parsed.searchParams.get(isCanonicalMkIdeas ? "d" : "id");
     const proposalId = parsed.searchParams.get("proposal");
     if (!MKIDEAS_LINK_KINDS.has(kind)) {
       return { ok: false, reason: "invalid-mkideas-kind" };
@@ -286,13 +371,35 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
     if (proposalId !== null && !UUID_RE.test(proposalId)) {
       return { ok: false, reason: "invalid-mkideas-proposal" };
     }
+    if (isCanonicalMkIdeas) {
+      const community = parsed.searchParams.get("community");
+      const eventId = parsed.searchParams.get("event");
+      if (!community || !COMMUNITY_RE.test(community)) {
+        return { ok: false, reason: "invalid-mkideas-community" };
+      }
+      if (eventId !== null && !HEX64_RE.test(eventId)) {
+        return { ok: false, reason: "invalid-mkideas-event" };
+      }
+      return {
+        ok: true,
+        value: {
+          type: "mkideas",
+          kind: kind as MkIdeasEntityKind,
+          id: id.toLowerCase(),
+          community: community.toLowerCase().replace(/\.$/, ""),
+          ...(eventId ? { eventId: eventId.toLowerCase() } : {}),
+          ...(proposalId ? { proposalId: proposalId.toLowerCase() } : {}),
+        },
+      };
+    }
     return {
       ok: true,
       value: {
         type: "mkideas",
-        kind: kind as 30803 | 30804 | 30805 | 30809,
+        kind: kind as MkIdeasEntityKind,
         id: id.toLowerCase(),
         ...(proposalId ? { proposalId: proposalId.toLowerCase() } : {}),
+        legacy: true,
       },
     };
   }

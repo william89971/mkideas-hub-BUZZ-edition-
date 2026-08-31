@@ -427,6 +427,16 @@ pub(crate) async fn query_events_on(
     // Use unqualified column names when no join, qualified when joined.
     let col_prefix = if q.p_tag_hex.is_some() { "e." } else { "" };
 
+    // MK Ideas keeps every accepted human-signed revision immutable. Ordinary
+    // Nostr queries still expose only the community-wide authoritative head;
+    // the dedicated MK history query is the explicit way to read revisions.
+    qb.push(format!(
+        " AND ({col_prefix}kind NOT BETWEEN 30800 AND 30899 OR EXISTS (\
+         SELECT 1 FROM mk_entity_heads mkh \
+         WHERE mkh.community_id = {col_prefix}community_id \
+           AND mkh.current_event_id = {col_prefix}id))"
+    ));
+
     if let Some(ch) = q.channel_id {
         qb.push(format!(" AND {col_prefix}channel_id = "))
             .push_bind(ch);
@@ -702,6 +712,15 @@ pub(crate) async fn count_events_on(conn: &mut sqlx::PgConnection, q: &EventQuer
     };
 
     let col_prefix = if q.p_tag_hex.is_some() { "e." } else { "" };
+
+    // Keep COUNT behavior identical to the displayed query: immutable MK
+    // revisions do not inflate ordinary current-state counts.
+    qb.push(format!(
+        " AND ({col_prefix}kind NOT BETWEEN 30800 AND 30899 OR EXISTS (\
+         SELECT 1 FROM mk_entity_heads mkh \
+         WHERE mkh.community_id = {col_prefix}community_id \
+           AND mkh.current_event_id = {col_prefix}id))"
+    ));
 
     if let Some(ch) = q.channel_id {
         qb.push(format!(" AND {col_prefix}channel_id = "))

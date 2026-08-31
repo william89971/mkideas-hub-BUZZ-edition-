@@ -26,6 +26,12 @@ pub mod invite;
 pub mod kind;
 /// MK Ideas shared operational state and validation contract.
 pub mod mkideas;
+/// MK Ideas device enrollment, recovery-bundle, and successor-identity contracts.
+pub mod mkideas_device;
+/// Atomic service-signed MK Ideas migration receipt contract.
+pub mod mkideas_migration;
+/// MK Ideas actionable-notification preferences and deduplication contract.
+pub mod mkideas_notification;
 /// Network utilities — SSRF-safe IP classification.
 pub mod network;
 /// NIP-10 thread-marker parsing — shared `root`/`reply` marker resolver.

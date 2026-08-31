@@ -1,5 +1,5 @@
-NIP-MK
-======
+NIP-MK v2
+=========
 
 MK Ideas Operational State
 --------------------------
@@ -11,16 +11,19 @@ MK Ideas Operational State
 NIP-MK defines the private operational records used by MK Ideas Buzz. Human
 state changes remain signed by the human who performed them. A Buzz relay
 validates the change and transactionally projects one authoritative head per
-`(community, kind, d)` even when different authorized partners sign successive
-versions.
+`(community, kind, d)` even when different partners sign successive versions.
 
 This is an MK Ideas extension to ordinary addressable-event behavior. Standard
-NIP-01 coordinates include the author's pubkey and therefore do not by
-themselves express a shared cross-author record.
+NIP-01 coordinates include the author's pubkey and do not by themselves express
+a shared cross-author record.
+
+The machine-readable source of truth is
+`docs/nips/mkideas-event-registry.json`. Rust, TypeScript, and Dart mirrors MUST
+be drift-tested against it.
 
 ## Reserved kinds
 
-`30800` through `30899` are reserved for addressable MK Ideas state:
+`30800` through `30899` are reserved for addressable state:
 
 | Kind | Record |
 |------|--------|
@@ -33,10 +36,9 @@ themselves express a shared cross-author record.
 | 30806 | meeting |
 | 30807 | decision |
 | 30808 | knowledge entry |
-| 30809 | approval record |
+| 30809 | approval request |
 
-`48200` through `48299` are reserved for append-only operations and system
-events:
+`48200` through `48299` are reserved for operations and system events:
 
 | Kind | Event |
 |------|-------|
@@ -45,13 +47,16 @@ events:
 | 48202 | migration receipt |
 | 48203 | generated summary |
 | 48204 | system activity or maintenance |
+| 48205 | external communication history |
 
-Buzz already uses `48001` for audit events and `48100` through `48106` for
-huddles. For that reason NIP-MK does not claim `48000` through `48099`.
+Buzz already uses `48001` for audit and `48100` through `48106` for huddles,
+so NIP-MK does not claim `48000` through `48099`.
 
 ## Human-signed state envelope
 
-Every state event MUST contain exactly one of each of these tags:
+Every state event MUST contain one `d`, `h`, `version`, and `status` tag.
+`prev` MUST be absent on version 1 and MUST contain the exact previous accepted
+event ID thereafter.
 
 ```jsonc
 [
@@ -63,78 +68,126 @@ Every state event MUST contain exactly one of each of these tags:
 ]
 ```
 
-`prev` MUST be absent on version 1 and MUST be present thereafter. The `h` tag
-is the public host-derived community identifier clients already know; the relay
-MUST compare it with its server-resolved tenant. Clients MUST NOT submit the
-relay's internal community database UUID.
-
 The JSON content MUST include `schema_version`, `record_type`, `entity_id`,
-`version`, and `status`. `entity_id` and `version` MUST agree with the signed
-tags. The complete typed record is carried in each accepted version.
+`version`, `status`, `source`, and a non-empty `provenance` object. It MAY carry
+typed assignees, deadline, and related-entity links. `entity_id`, `version`, and
+`status` MUST agree with the signed tags. Schema v2 is the write contract;
+schema-v1 person, interview, content, and approval records remain readable
+during rolling upgrades.
 
-Typed relationships are duplicated in signed tags so clients can filter and
-render links without parsing every payload:
+Typed relationships are duplicated in signed tags:
 
 - interview: `["guest", "<person UUID>"]`
-- content: `["interview", "<interview UUID>"]`
-- approval: `["target", "<kind>", "<entity UUID>"]` and
-  `["proposal", "<proposal UUID>", "<proposal event id>"]`
+- content: `["interview", "<interview UUID>"]` when it belongs to an interview
+- approval: `["target", "<kind>", "<entity UUID>", "<target event id>"]`
+  and `["proposal", "<proposal UUID>", "<proposal event id>"]`
 - agent proposal: `["target", "<kind>", "<entity UUID>"]`
 
-`status` and relationship tags MUST match the JSON payload. The relay rejects
-missing, duplicate, or inconsistent typed tags.
+## Shared heads and immutable history
 
-## Shared-head extension
+The relay maintains `mk_entity_heads` keyed by its internal
+`(community_id, kind, d_tag)` and an append-only `mk_entity_revisions`
+projection. Under a row lock it MUST:
 
-The relay maintains `mk_entity_heads`, keyed by its internal
-`(community_id, kind, d_tag)` tuple. Under a row lock it MUST:
+1. verify membership and operational role;
+2. verify signed `h`, `version`, and `prev` values;
+3. validate schema, fields, DNC, links, and the legal transition;
+4. store the signed event and immutable revision unchanged;
+5. advance the head atomically without deleting the previous revision.
 
-1. verify the caller's membership and operational role;
-2. verify the signed `h`, `version`, and `prev` values;
-3. validate required fields and the legal domain transition;
-4. store the incoming signed event unchanged;
-5. make the prior event non-current and advance the projection atomically.
+Two concurrent updates cannot both win. A stale update returns the current
+version and event ID. Ordinary Nostr query, count, and search paths expose only
+the projected head. `/query` extensions `mk_projection: "heads"` and
+`mk_projection: "history"` return `{events, nextCursor}`; plain filters retain
+their standard array response. Live subscriptions continue carrying signed
+events.
 
-Two concurrent updates to one head cannot both succeed. A stale update returns
-a conflict with the current version and event id. Ordinary current-state reads,
-search, and subscriptions see the single live accepted event. Historical audit
-and operation events remain append-only.
+Archiving is a validated state transition, not NIP-09 deletion.
 
-An MK state record is archived by publishing a validated state transition to
-`archived`. A NIP-09 deletion request MUST NOT delete or supersede MK state.
+## Status vocabularies
 
-## Authority
+- Goal: `draft`, `active`, `on-hold`, `completed`, `archived`.
+- Project: `planned`, `active`, `blocked`, `completed`, `archived`.
+- Task: `backlog`, `to-do`, `in-progress`, `blocked`, `review`, `done`, `cancelled`.
+- Person: `prospect`, `researching`, `ready-to-contact`, `contacted`, `responded`, `scheduled`, `interviewed`, `nurture`, `closed`, `archived`.
+- Interview: `idea`, `planning`, `scheduled`, `recorded`, `transcribing`, `reviewing`, `complete`, `cancelled`.
+- Content: `idea`, `draft`, `in-review`, `approved`, `scheduled`, `published`, `archived`.
+- Meeting: `planned`, `completed`, `cancelled`.
+- Decision: `proposed`, `decided`, `superseded`, `archived`.
+- Knowledge: `draft`, `verified`, `archived`.
+- Approval: `pending`, `approved`, `rejected`, `stale`, `cancelled`.
 
-State and approval events are accepted only from an MK Ideas owner or admin.
-The relay never re-signs a human action with a service identity.
+Do-not-contact is an independent sticky person field. Clearing it is owner-only,
+requires a reason, and produces audit evidence.
 
-Agent proposals, generated summaries, migration receipts, scheduled actions,
-and maintenance events MUST be signed by a registered managed-agent identity.
-An agent proposal MUST use `status: "proposed"` and MUST NOT include an approval
-decision.
+## Authority and service capabilities
 
-AI MAY research, draft, summarize, classify, extract, recommend, and propose.
-AI MUST NOT approve, send external communication, publish, bypass a human gate,
-or silently change protected operational state. Accepting an AI proposal
-creates a new human-signed state event and, when applicable, a human-signed
-approval action.
+Normal state and approval actions are owner/admin human events. The relay never
+re-signs them. AI MAY research, draft, summarize, classify, extract, recommend,
+and propose. AI MUST NOT approve, send, publish, clear DNC, impersonate a human,
+or directly author protected state.
 
-## V0 profile
+Schema-v2 service output requires an active, owner-associated, expiring and
+revocable MK service grant. The grant binds purpose, allowed event kinds,
+allowed target kinds, persona when applicable, and a dataset hash for
+migration. Generic managed-agent status is not enough.
 
-V0 enables person/guest (`30803`), interview (`30804`), content (`30805`), and
-approval (`30809`) state plus approval actions (`48200`) and agent proposals
-(`48201`). The remaining reserved state kinds are held for V1 and MUST be
-rejected until their typed transition rules are implemented.
+Historical imported state is the sole exception to human state authorship. It
+requires `imported: true`, deterministic identity, immutable source provenance,
+an explicit `state_import` capability, and an idempotency receipt written in
+the same relay transaction. It never grants agents normal state authority.
+
+## Approval transaction
+
+A schema-v2 `30809` request binds its exact event, target coordinate and
+event/version, plus a proposal UUID and event. A human-signed `48200` action
+repeats these bindings and includes a reason. The relay locks the approval and
+target projections and atomically stores the action, optional separately
+human-signed result event, head update, decision projection, and audit evidence.
+A changed target is stale. A service identity cannot publish `48200`.
+
+## Media and transcripts
+
+Schema-v2 state MUST NOT embed full transcript text. It carries immutable
+private-media descriptors: object/media ID, SHA-256, MIME type, size, original
+filename, uploader, upload time, source/provenance, and transcript
+format/language/version. The relay validates authorization, bytes, digest, MIME
+type, and size. Replacement uploads create new immutable versions. Authorized
+transcript segments are derived for timestamp navigation and search.
 
 ## Team references
 
-An MK Ideas record can be referenced from Buzz Team/chat with:
+The canonical entity link is:
 
 ```text
-buzz://mkideas?kind=<30803|30804|30805|30809>&id=<entity UUID>
+buzz://mkideas/entity?community=<h>&kind=<kind>&d=<entity UUID>
 ```
 
-An optional `proposal=<proposal UUID>` keeps the discussion tied to a specific
-agent result. The desktop composer preserves this link, the timeline renders it
-as a Buzz-native chip/card, and activating it opens People for person records or
-Studio for interview, content, and approval records.
+An optional `event=<event id>` opens a historical revision. Today, Search,
+Team, notifications, desktop, and mobile resolve the same link. Legacy
+`buzz://mkideas?kind=...&id=...` links remain readable during migration.
+
+## Device grants and recovery
+
+Human sessions may carry an independent device key in addition to the human
+identity. Enrollment consumes a short-lived, hash-only challenge after both
+keys sign the exact community, human, device, challenge, platform, and device
+metadata. Session proofs also bind the current NIP-42 challenge and relay URL.
+Device grants are revocable, expiring, inventoried per human, and never portable
+across communities.
+
+The rollout modes are `off`, `audit`, and `enforce`; `off` is the default.
+`enforce` is a startup error until closed relay membership, an owner recovery
+authority, and an explicit existing-client enrollment acknowledgement are all
+configured. Narrow, owner-associated service identities bypass the physical
+device gate but remain capability-checked for every operational event.
+
+Recovery from a surviving device binds the exact active grant and creates the
+replacement grant transactionally. Offline bundles use client-encrypted NIP-49
+material in private media; the relay stores only object metadata, hash, and
+size and never receives the passphrase or plaintext key. If the identity is
+unrecoverable, an owner-authorized successor record preserves the predecessor's
+historical attribution rather than rewriting old signatures.
+
+The complete trust boundary, abuse cases, and verification matrix are in
+[`../security/MKIDEAS_THREAT_MODEL.md`](../security/MKIDEAS_THREAT_MODEL.md).

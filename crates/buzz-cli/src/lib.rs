@@ -1996,6 +1996,39 @@ pub enum ModerationCmd {
 /// MK Ideas commands intended for registered managed-agent identities.
 #[derive(Subcommand)]
 pub enum MkIdeasCmd {
+    /// Read the current authoritative heads for MK Ideas state kinds
+    Heads {
+        /// MK Ideas state kind to include; repeat for multiple kinds
+        #[arg(long = "kind", required = true)]
+        kinds: Vec<u32>,
+        /// Community host; defaults to the configured relay host
+        #[arg(long)]
+        community: Option<String>,
+        /// Opaque cursor returned by the previous page
+        #[arg(long)]
+        cursor: Option<String>,
+        /// Page size from 1 through 200
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Read immutable revisions for one MK Ideas state entity
+    History {
+        /// MK Ideas state kind of the entity
+        #[arg(long)]
+        kind: u32,
+        /// Stable entity UUID
+        #[arg(long)]
+        entity_id: String,
+        /// Community host; defaults to the configured relay host
+        #[arg(long)]
+        community: Option<String>,
+        /// Opaque version cursor returned by the previous page
+        #[arg(long)]
+        cursor: Option<String>,
+        /// Page size from 1 through 200
+        #[arg(long)]
+        limit: Option<u32>,
+    },
     /// Idempotently add synthetic guest-to-content records for a V0 demonstration
     SeedDemo,
     /// Attach a draft proposal to a guest, interview, or content record

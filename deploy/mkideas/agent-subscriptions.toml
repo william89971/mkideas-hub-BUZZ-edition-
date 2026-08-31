@@ -1,0 +1,8 @@
+# Deliberately narrow starting point. Relay-side service grants remain the
+# authority even if this client-side subscription file is broadened.
+
+[[rules]]
+name = "mkideas-agent-requests"
+channels = "all"
+kinds = [30800, 30801, 30802, 30803, 30804, 30805, 30806, 30807, 30808, 30809]
+require_mention = true

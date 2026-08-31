@@ -1106,6 +1106,146 @@ async fn query_events_authed(
     )
     .await?;
 
+    // NIP-MK projection extension. Plain filters retain the ordinary Nostr
+    // array response; an explicit projection receives a cursor-bearing object.
+    // Keeping this on /query preserves the relay's single auth/community door.
+    let mk_projection_filters = raw_filters
+        .iter()
+        .filter(|raw| raw.get("mk_projection").is_some())
+        .collect::<Vec<_>>();
+    if !mk_projection_filters.is_empty() {
+        if raw_filters.len() != 1 || mk_projection_filters.len() != 1 {
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                "MK Ideas projection queries require exactly one filter",
+            ));
+        }
+        let raw = mk_projection_filters[0];
+        let filter = &filters[0];
+        let projection = raw
+            .get("mk_projection")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                api_error(
+                    StatusCode::BAD_REQUEST,
+                    "mk_projection must be `heads` or `history`",
+                )
+            })?;
+        let kinds = raw
+            .get("kinds")
+            .and_then(Value::as_array)
+            .and_then(|values| {
+                values
+                    .iter()
+                    .map(|value| value.as_u64().map(|kind| kind as u32))
+                    .collect::<Option<Vec<_>>>()
+            })
+            .ok_or_else(|| {
+                api_error(
+                    StatusCode::BAD_REQUEST,
+                    "MK Ideas projection queries require explicit kinds",
+                )
+            })?;
+        if kinds.is_empty()
+            || kinds
+                .iter()
+                .any(|kind| !buzz_core::kind::is_mkideas_state_kind(*kind))
+        {
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                "MK Ideas projection kinds must be within 30800-30899",
+            ));
+        }
+        let limit = filter.limit.unwrap_or(100).min(200) as u32;
+        let (stored, next_cursor) = match projection {
+            "heads" => {
+                let after = raw
+                    .get("mk_cursor")
+                    .and_then(Value::as_str)
+                    .map(|cursor| {
+                        let (kind, entity) = cursor.split_once(':').ok_or(())?;
+                        Ok::<_, ()>(buzz_db::mkideas::MkIdeasHeadCursor {
+                            kind: kind.parse().map_err(|_| ())?,
+                            entity_id: uuid::Uuid::parse_str(entity).map_err(|_| ())?,
+                        })
+                    })
+                    .transpose()
+                    .map_err(|()| {
+                        api_error(
+                            StatusCode::BAD_REQUEST,
+                            "mk_cursor for heads must be `<kind>:<uuid>`",
+                        )
+                    })?;
+                let (events, next) = state
+                    .db
+                    .query_mkideas_heads(tenant.community(), &kinds, after.as_ref(), limit)
+                    .await
+                    .map_err(|error| internal_error(&format!("MK head query error: {error}")))?;
+                (
+                    events,
+                    next.map(|cursor| format!("{}:{}", cursor.kind, cursor.entity_id)),
+                )
+            }
+            "history" => {
+                if kinds.len() != 1 {
+                    return Err(api_error(
+                        StatusCode::BAD_REQUEST,
+                        "MK history requires exactly one kind",
+                    ));
+                }
+                let entity_id = raw
+                    .get("#d")
+                    .and_then(Value::as_array)
+                    .filter(|values| values.len() == 1)
+                    .and_then(|values| values[0].as_str())
+                    .and_then(|value| uuid::Uuid::parse_str(value).ok())
+                    .ok_or_else(|| {
+                        api_error(
+                            StatusCode::BAD_REQUEST,
+                            "MK history requires one UUID in #d",
+                        )
+                    })?;
+                let before_version = raw
+                    .get("mk_cursor")
+                    .and_then(Value::as_str)
+                    .map(str::parse::<i64>)
+                    .transpose()
+                    .map_err(|_| {
+                        api_error(
+                            StatusCode::BAD_REQUEST,
+                            "mk_cursor for history must be a version number",
+                        )
+                    })?;
+                let (events, next) = state
+                    .db
+                    .query_mkideas_history(
+                        tenant.community(),
+                        kinds[0],
+                        entity_id,
+                        before_version,
+                        limit,
+                    )
+                    .await
+                    .map_err(|error| internal_error(&format!("MK history query error: {error}")))?;
+                (events, next.map(|version| version.to_string()))
+            }
+            _ => {
+                return Err(api_error(
+                    StatusCode::BAD_REQUEST,
+                    "mk_projection must be `heads` or `history`",
+                ));
+            }
+        };
+        let events = stored
+            .into_iter()
+            .filter_map(|stored| serde_json::to_value(stored.event).ok())
+            .collect::<Vec<_>>();
+        return Ok(Json(serde_json::json!({
+            "events": events,
+            "nextCursor": next_cursor,
+        })));
+    }
+
     if filters.iter().any(|f| f.search.is_some()) {
         if has_mixed_search_filters(&filters) {
             return Err(api_error(

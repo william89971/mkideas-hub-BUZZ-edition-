@@ -1,15 +1,18 @@
 {
   "$schema": "https://open-plugin-spec.org/schema/v1/plugin.json",
   "id": "org.mkideas.v0-agents",
-  "name": "MK Ideas V0 Agents",
-  "version": "0.1.0",
-  "description": "Human-gated guest research and interview clip proposals for the MK Ideas V0 demonstration.",
+  "name": "MK Ideas Agents",
+  "version": "0.2.0",
+  "description": "Five human-gated operational personas for MK Ideas Buzz, with deterministic v2 contract fixtures.",
   "author": "MK Ideas",
   "license": "Apache-2.0",
-  "keywords": ["mkideas", "research", "interviews", "human-review"],
+  "keywords": ["mkideas", "research", "interviews", "operations", "human-review"],
   "personas": [
     "agents/guest-researcher.persona.md",
-    "agents/content-clip-copilot.persona.md"
+    "agents/outreach-drafter.persona.md",
+    "agents/interview-producer.persona.md",
+    "agents/content-clip-copilot.persona.md",
+    "agents/operations-briefing-assistant.persona.md"
   ],
   "pack_instructions": "instructions.md",
   "defaults": {

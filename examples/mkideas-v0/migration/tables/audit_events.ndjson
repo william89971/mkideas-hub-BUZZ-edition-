@@ -1,0 +1,2 @@
+{"id":"c0000000-0000-4000-8000-000000000001","workspace_id":"11111111-1111-4111-8111-111111111111","actor_membership_id":null,"actor_kind":"development_adapter","action":"fixture.created","target_type":"workspace","target_id":"11111111-1111-4111-8111-111111111111","before":null,"after":{"fixture":true},"correlation_id":"d0000000-0000-4000-8000-000000000001","source":"synthetic_fixture","created_at":"2026-01-01T08:00:00Z"}
+

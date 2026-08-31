@@ -72,25 +72,41 @@ class PendingDeepLinkNotifier extends Notifier<BuzzDeepLink?> {
   Future<DeepLinkCommunityPreparation> prepareCommunity(
     BuzzDeepLink link,
   ) async {
-    if (link is! MessageDeepLink || link.communityId == null) {
+    final ({String? localId, String? host})? requestedCommunity =
+        switch (link) {
+          MessageDeepLink(:final communityId?) => (
+            localId: communityId,
+            host: null,
+          ),
+          MkIdeasDeepLink(:final community) => (localId: null, host: community),
+          _ => null,
+        };
+    if (requestedCommunity == null) {
       return DeepLinkCommunityPreparation.ready;
     }
-    final communityId = link.communityId!;
     try {
       final communities = await ref.read(communityListProvider.future);
-      if (!communities.any((community) => community.id == communityId)) {
+      final matches = communities.where((candidate) {
+        final localId = requestedCommunity.localId;
+        if (localId != null) return candidate.id == localId;
+        return _communityHost(candidate.relayUrl) == requestedCommunity.host;
+      });
+      final requested = matches.firstOrNull;
+      if (requested == null) {
         return DeepLinkCommunityPreparation.unavailable;
       }
       final active = await ref.read(activeCommunityProvider.future);
-      if (active?.id == communityId) return DeepLinkCommunityPreparation.ready;
+      if (active?.id == requested.id) {
+        return DeepLinkCommunityPreparation.ready;
+      }
       await ref
           .read(communityListProvider.notifier)
-          .switchCommunity(communityId);
+          .switchCommunity(requested.id);
       return DeepLinkCommunityPreparation.switched;
     } catch (error) {
       debugPrint(
         'notification-routing: failed to switch to community '
-        '$communityId: $error',
+        '${requestedCommunity.localId ?? requestedCommunity.host}: $error',
       );
       return DeepLinkCommunityPreparation.failed;
     }
@@ -103,6 +119,16 @@ class PendingDeepLinkNotifier extends Notifier<BuzzDeepLink?> {
       _waiting.addLast(link);
     }
   }
+}
+
+String? _communityHost(String relayUrl) {
+  final uri = Uri.tryParse(relayUrl);
+  if (uri == null || uri.host.isEmpty) return null;
+  final host = uri.host.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+  final defaultPort =
+      (uri.scheme == 'wss' || uri.scheme == 'https') && uri.port == 443 ||
+      (uri.scheme == 'ws' || uri.scheme == 'http') && uri.port == 80;
+  return uri.hasPort && !defaultPort ? '$host:${uri.port}' : host;
 }
 
 final pendingDeepLinkProvider =

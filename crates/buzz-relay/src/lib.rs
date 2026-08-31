@@ -18,6 +18,8 @@ pub mod config;
 pub mod conformance;
 /// WebSocket connection lifecycle and state.
 pub mod connection;
+/// Staged MK Ideas device-grant authentication and revocation seam.
+pub mod device_security;
 /// Relay error types.
 pub mod error;
 /// WebSocket message handlers for NIP-01 client commands.
@@ -28,6 +30,8 @@ pub mod invite_token;
 pub mod mesh_boot;
 /// Prometheus metrics: recorder, upkeep, HTTP middleware.
 pub mod metrics;
+/// Content-minimal MK Ideas notification transport boundary.
+pub mod mkideas_notifications;
 /// NIP-11 relay information document.
 pub mod nip11;
 /// NIP-01 client/relay message parsing.

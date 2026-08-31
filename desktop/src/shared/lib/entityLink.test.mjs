@@ -13,6 +13,8 @@ import {
   ENTITY_LINK_TABS,
   isEntityLink,
   isLinkableCoordinate,
+  mkIdeasAreaForKind,
+  mkIdeasLabelForKind,
   parseEntityLink,
 } from "./entityLink.ts";
 
@@ -95,22 +97,81 @@ test("parseEntityLink round-trips built links", () => {
   });
 });
 
-test("MK Ideas links round-trip a record and optional proposal", () => {
+test("MK Ideas links round-trip the canonical community-aware coordinate", () => {
   const id = "11111111-1111-4111-8111-111111111111";
   const proposalId = "22222222-2222-4222-8222-222222222222";
-  const link = buildMkIdeasLink({ kind: 30803, id, proposalId });
+  const eventId = "a".repeat(64);
+  const link = buildMkIdeasLink({
+    community: "relay.mkideas.org",
+    kind: 30800,
+    id,
+    eventId,
+    proposalId,
+  });
   assert.equal(
     link,
-    `buzz://mkideas?kind=30803&id=${id}&proposal=${proposalId}`,
+    `buzz://mkideas/entity?community=relay.mkideas.org&kind=30800&d=${id}&event=${eventId}&proposal=${proposalId}`,
   );
   assert.deepEqual(parseEntityLink(link), {
     ok: true,
-    value: { type: "mkideas", kind: 30803, id, proposalId },
+    value: {
+      type: "mkideas",
+      community: "relay.mkideas.org",
+      kind: 30800,
+      id,
+      eventId,
+      proposalId,
+    },
   });
-  assert.deepEqual(parseEntityLink(`buzz://mkideas?kind=30800&id=${id}`), {
+});
+
+test("MK Ideas parser preserves legacy V0 links", () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  const proposalId = "22222222-2222-4222-8222-222222222222";
+  assert.deepEqual(
+    parseEntityLink(
+      `buzz://mkideas?kind=30803&id=${id}&proposal=${proposalId}`,
+    ),
+    {
+      ok: true,
+      value: {
+        type: "mkideas",
+        kind: 30803,
+        id,
+        proposalId,
+        legacy: true,
+      },
+    },
+  );
+  assert.deepEqual(
+    parseEntityLink(
+      `buzz://mkideas/entity?community=relay.mkideas.org&kind=30803&d=${id}&event=short`,
+    ),
+    { ok: false, reason: "invalid-mkideas-event" },
+  );
+  assert.deepEqual(
+    parseEntityLink(
+      `buzz://mkideas/entity?community=bad%20host&kind=30803&d=${id}`,
+    ),
+    { ok: false, reason: "invalid-mkideas-community" },
+  );
+  assert.deepEqual(parseEntityLink(`buzz://mkideas?kind=30900&id=${id}`), {
     ok: false,
     reason: "invalid-mkideas-kind",
   });
+});
+
+test("MK Ideas kinds map to the permanent product areas", () => {
+  assert.deepEqual(
+    [30800, 30801, 30802, 30806, 30807].map(mkIdeasAreaForKind),
+    ["work", "work", "work", "work", "work"],
+  );
+  assert.equal(mkIdeasAreaForKind(30803), "people");
+  assert.equal(mkIdeasAreaForKind(30804), "studio");
+  assert.equal(mkIdeasAreaForKind(30805), "studio");
+  assert.equal(mkIdeasAreaForKind(30808), "today");
+  assert.equal(mkIdeasAreaForKind(30809), "today");
+  assert.equal(mkIdeasLabelForKind(30801), "Operational project");
 });
 
 test("commit links select an exact repository commit", () => {
@@ -174,7 +235,7 @@ test("isEntityLink matches entity hosts and excludes message links", () => {
   assert.equal(isEntityLink(`buzz://project?owner=${OWNER}`), true);
   assert.equal(
     isEntityLink(
-      "buzz://mkideas?kind=30803&id=11111111-1111-4111-8111-111111111111",
+      "buzz://mkideas/entity?community=relay.mkideas.org&kind=30803&d=11111111-1111-4111-8111-111111111111",
     ),
     true,
   );

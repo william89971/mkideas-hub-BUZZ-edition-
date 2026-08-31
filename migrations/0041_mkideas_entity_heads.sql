@@ -23,3 +23,5 @@ CREATE TABLE mk_entity_heads (
 CREATE UNIQUE INDEX idx_mk_entity_heads_current_event
     ON mk_entity_heads (community_id, current_event_id)
     WHERE current_event_id IS NOT NULL;
+
+SELECT attach_community_write_fence('mk_entity_heads'::regclass);

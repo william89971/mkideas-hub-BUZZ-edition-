@@ -193,6 +193,30 @@ CREATE UNIQUE INDEX idx_users_nip05 ON users (community_id, lower(nip05_handle))
 CREATE UNIQUE INDEX idx_users_okta ON users (community_id, okta_user_id)
     WHERE okta_user_id IS NOT NULL;
 
+-- ── MK Ideas safe search document ────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION mkideas_search_document(event_kind INT, event_content TEXT)
+RETURNS TEXT
+LANGUAGE SQL
+IMMUTABLE
+STRICT
+AS $$
+    SELECT concat_ws(
+        ' ',
+        event_content::jsonb ->> 'name',
+        event_content::jsonb ->> 'title',
+        event_content::jsonb ->> 'status',
+        event_content::jsonb ->> 'organization',
+        event_content::jsonb ->> 'summary',
+        event_content::jsonb ->> 'proposal_type',
+        event_content::jsonb ->> 'persona',
+        CASE WHEN jsonb_typeof(event_content::jsonb -> 'topics') = 'array'
+             THEN (event_content::jsonb -> 'topics')::TEXT END,
+        CASE WHEN jsonb_typeof(event_content::jsonb -> 'tags') = 'array'
+             THEN (event_content::jsonb -> 'tags')::TEXT END
+    )
+$$;
+
 -- ── Events (partitioned by month on created_at) ──────────────────────────────
 -- Conformance: "Channel-less global events and DMs". `community_id` leads the
 -- PK and every hot-path index. Partition stays BY RANGE (created_at) — the
@@ -221,8 +245,8 @@ CREATE TABLE events (
     -- never matches `@@`.
     -- Keep in sync with migrations (final state: 0001 + 0005 + 0014 + 0033 + 0042).
     search_tsv  TSVECTOR GENERATED ALWAYS AS (
-        CASE WHEN kind IN (30803, 30804, 30805, 30809, 48200, 48201)
-             THEN to_tsvector('simple', content)
+        CASE WHEN kind BETWEEN 30800 AND 30809 OR kind IN (48201, 48203, 48204, 48205)
+             THEN to_tsvector('simple', mkideas_search_document(kind, content))
              WHEN kind IN (1059, 30179, 30300, 30350, 30622, 44100, 44101, 44200)
              THEN NULL::tsvector
              ELSE to_tsvector('simple', content)
@@ -1922,3 +1946,287 @@ CREATE TABLE mk_entity_heads (
 CREATE UNIQUE INDEX idx_mk_entity_heads_current_event
     ON mk_entity_heads (community_id, current_event_id)
     WHERE current_event_id IS NOT NULL;
+
+-- ── MK Ideas immutable accepted revision projection ───────────────────────
+
+CREATE TABLE mk_entity_revisions (
+    community_id      UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    kind              INT NOT NULL CHECK (kind BETWEEN 30800 AND 30899),
+    d_tag             TEXT NOT NULL CHECK (length(d_tag) BETWEEN 1 AND 512),
+    version           BIGINT NOT NULL CHECK (version >= 1),
+    event_id          BYTEA NOT NULL CHECK (length(event_id) = 32),
+    previous_event_id BYTEA CHECK (previous_event_id IS NULL OR length(previous_event_id) = 32),
+    signer_pubkey     BYTEA NOT NULL CHECK (length(signer_pubkey) = 32),
+    schema_version    BIGINT NOT NULL CHECK (schema_version >= 1),
+    accepted_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (community_id, kind, d_tag, version),
+    UNIQUE (community_id, event_id)
+);
+
+CREATE INDEX idx_mk_entity_revisions_history
+    ON mk_entity_revisions (community_id, kind, d_tag, version DESC, event_id);
+
+-- ── MK Ideas atomic approval decision projection ───────────────────────────
+
+CREATE TABLE mk_approval_decisions (
+    community_id       UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    approval_id        UUID NOT NULL,
+    approval_event_id  BYTEA NOT NULL CHECK (length(approval_event_id) = 32),
+    target_kind        INT NOT NULL CHECK (target_kind BETWEEN 30800 AND 30808),
+    target_d_tag       TEXT NOT NULL CHECK (length(target_d_tag) BETWEEN 1 AND 512),
+    target_event_id    BYTEA NOT NULL CHECK (length(target_event_id) = 32),
+    target_version     BIGINT NOT NULL CHECK (target_version >= 1),
+    proposal_id        UUID NOT NULL,
+    proposal_event_id  BYTEA NOT NULL CHECK (length(proposal_event_id) = 32),
+    action_event_id    BYTEA NOT NULL CHECK (length(action_event_id) = 32),
+    result_event_id    BYTEA CHECK (result_event_id IS NULL OR length(result_event_id) = 32),
+    decision           TEXT NOT NULL CHECK (decision IN ('approved', 'rejected')),
+    decided_by         BYTEA NOT NULL CHECK (length(decided_by) = 32),
+    reason             TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 2000),
+    decided_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (community_id, approval_id),
+    UNIQUE (community_id, action_event_id)
+);
+
+CREATE INDEX idx_mk_approval_decisions_target
+    ON mk_approval_decisions (community_id, target_kind, target_d_tag, decided_at DESC);
+
+-- ── MK Ideas narrow service capabilities ──────────────────────────────────
+
+CREATE TABLE mk_service_grants (
+    id                   UUID NOT NULL DEFAULT gen_random_uuid(),
+    community_id         UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    service_pubkey       BYTEA NOT NULL CHECK (length(service_pubkey) = 32),
+    owner_pubkey         BYTEA NOT NULL CHECK (length(owner_pubkey) = 32),
+    purpose              TEXT NOT NULL CHECK (purpose IN ('agent', 'migration', 'maintenance')),
+    persona              TEXT,
+    allowed_event_kinds  INT[] NOT NULL,
+    allowed_target_kinds INT[] NOT NULL DEFAULT '{}',
+    dataset_sha256       TEXT,
+    issued_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at           TIMESTAMPTZ NOT NULL,
+    revoked_at           TIMESTAMPTZ,
+    CHECK (expires_at > issued_at),
+    CHECK (cardinality(allowed_event_kinds) > 0),
+    CHECK (purpose <> 'agent' OR persona IS NOT NULL),
+    CHECK (purpose <> 'migration' OR dataset_sha256 IS NOT NULL),
+    PRIMARY KEY (community_id, id),
+    UNIQUE (community_id, service_pubkey, purpose, persona, dataset_sha256)
+);
+
+CREATE INDEX idx_mk_service_grants_active
+    ON mk_service_grants (community_id, service_pubkey, expires_at)
+    WHERE revoked_at IS NULL;
+
+-- ── MK Ideas atomic migration item projection ─────────────────────────────
+
+CREATE TABLE mk_migration_items (
+    community_id        UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    dataset_sha256      TEXT NOT NULL CHECK (length(dataset_sha256) = 64),
+    batch_id            UUID NOT NULL,
+    source_system       TEXT NOT NULL CHECK (length(source_system) BETWEEN 1 AND 120),
+    source_workspace_id UUID NOT NULL,
+    source_type         TEXT NOT NULL CHECK (length(source_type) BETWEEN 1 AND 120),
+    source_id           TEXT NOT NULL CHECK (length(source_id) BETWEEN 1 AND 512),
+    source_revision     BIGINT NOT NULL CHECK (source_revision >= 1),
+    source_sha256       TEXT NOT NULL CHECK (length(source_sha256) = 64),
+    record_id           UUID NOT NULL,
+    destination_kind    INT NOT NULL,
+    destination_d_tag   TEXT,
+    imported_event_id   BYTEA NOT NULL CHECK (length(imported_event_id) = 32),
+    receipt_event_id    BYTEA NOT NULL CHECK (length(receipt_event_id) = 32),
+    service_pubkey      BYTEA NOT NULL CHECK (length(service_pubkey) = 32),
+    accepted_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (
+        community_id, dataset_sha256, batch_id, source_system,
+        source_workspace_id, source_type, source_id, source_revision
+    ),
+    UNIQUE (community_id, imported_event_id),
+    UNIQUE (community_id, receipt_event_id),
+    CHECK (
+        (destination_kind BETWEEN 30800 AND 30899 AND destination_d_tag IS NOT NULL)
+        OR
+        (destination_kind NOT BETWEEN 30800 AND 30899 AND destination_d_tag IS NULL)
+    )
+);
+
+CREATE INDEX idx_mk_migration_items_batch
+    ON mk_migration_items (community_id, dataset_sha256, batch_id, accepted_at);
+
+-- ── MK Ideas staged device grants ──────────────────────────────────────────
+
+CREATE TABLE mk_device_grants (
+    id                UUID NOT NULL DEFAULT gen_random_uuid(),
+    community_id      UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    human_pubkey      BYTEA NOT NULL CHECK (length(human_pubkey) = 32),
+    device_pubkey     BYTEA NOT NULL CHECK (length(device_pubkey) = 32),
+    issued_by         BYTEA NOT NULL CHECK (length(issued_by) = 32),
+    device_name       TEXT NOT NULL CHECK (length(device_name) BETWEEN 1 AND 120),
+    platform          TEXT NOT NULL CHECK (platform IN ('windows', 'macos', 'ios', 'android', 'linux', 'web')),
+    grant_version     SMALLINT NOT NULL DEFAULT 1 CHECK (grant_version = 1),
+    auth_epoch        BIGINT NOT NULL DEFAULT 1 CHECK (auth_epoch > 0),
+    enrollment_method TEXT NOT NULL DEFAULT 'two-key-proof'
+        CHECK (enrollment_method IN ('two-key-proof', 'surviving-device', 'owner-assisted')),
+    human_proof_event_id BYTEA
+        CHECK (human_proof_event_id IS NULL OR length(human_proof_event_id) = 32),
+    device_proof_event_id BYTEA
+        CHECK (device_proof_event_id IS NULL OR length(device_proof_event_id) = 32),
+    issued_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at        TIMESTAMPTZ,
+    last_seen_at      TIMESTAMPTZ,
+    revoked_at        TIMESTAMPTZ,
+    revoked_by        BYTEA CHECK (revoked_by IS NULL OR length(revoked_by) = 32),
+    revocation_reason TEXT,
+    PRIMARY KEY (community_id, id),
+    UNIQUE (community_id, device_pubkey)
+);
+
+CREATE INDEX idx_mk_device_grants_human
+    ON mk_device_grants (community_id, human_pubkey, issued_at DESC);
+CREATE INDEX idx_mk_device_grants_active
+    ON mk_device_grants (community_id, device_pubkey)
+    WHERE revoked_at IS NULL;
+
+CREATE TABLE mk_device_enrollment_challenges (
+    id                    UUID NOT NULL,
+    community_id          UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    human_pubkey          BYTEA NOT NULL CHECK (length(human_pubkey) = 32),
+    device_pubkey         BYTEA NOT NULL CHECK (length(device_pubkey) = 32),
+    issued_by             BYTEA NOT NULL CHECK (length(issued_by) = 32),
+    challenge_hash        BYTEA NOT NULL CHECK (length(challenge_hash) = 32),
+    issued_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at            TIMESTAMPTZ NOT NULL,
+    consumed_at           TIMESTAMPTZ,
+    consumed_by_grant_id  UUID,
+    CHECK (expires_at > issued_at AND expires_at <= issued_at + interval '10 minutes'),
+    CHECK ((consumed_at IS NULL) = (consumed_by_grant_id IS NULL)),
+    PRIMARY KEY (community_id, id),
+    FOREIGN KEY (community_id, consumed_by_grant_id)
+        REFERENCES mk_device_grants(community_id, id),
+    UNIQUE (community_id, challenge_hash)
+);
+
+CREATE INDEX idx_mk_device_enrollment_challenges_active
+    ON mk_device_enrollment_challenges (community_id, human_pubkey, expires_at)
+    WHERE consumed_at IS NULL;
+
+CREATE TABLE mk_device_recovery_requests (
+    id                    UUID NOT NULL,
+    community_id          UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    human_pubkey          BYTEA NOT NULL CHECK (length(human_pubkey) = 32),
+    surviving_grant_id    UUID NOT NULL,
+    requested_device_pubkey BYTEA NOT NULL CHECK (length(requested_device_pubkey) = 32),
+    challenge_hash        BYTEA NOT NULL CHECK (length(challenge_hash) = 32),
+    requested_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at            TIMESTAMPTZ NOT NULL,
+    decided_at            TIMESTAMPTZ,
+    decided_by            BYTEA CHECK (decided_by IS NULL OR length(decided_by) = 32),
+    state                 TEXT NOT NULL DEFAULT 'pending'
+        CHECK (state IN ('pending', 'approved', 'rejected', 'expired', 'consumed')),
+    resulting_grant_id    UUID,
+    decision_reason       TEXT,
+    CHECK (expires_at > requested_at AND expires_at <= requested_at + interval '10 minutes'),
+    CHECK (requested_device_pubkey <> human_pubkey),
+    CHECK ((decided_at IS NULL) = (decided_by IS NULL)),
+    PRIMARY KEY (community_id, id),
+    FOREIGN KEY (community_id, surviving_grant_id)
+        REFERENCES mk_device_grants(community_id, id),
+    FOREIGN KEY (community_id, resulting_grant_id)
+        REFERENCES mk_device_grants(community_id, id),
+    UNIQUE (community_id, challenge_hash)
+);
+
+CREATE INDEX idx_mk_device_recovery_requests_pending
+    ON mk_device_recovery_requests (community_id, human_pubkey, expires_at)
+    WHERE state = 'pending';
+
+CREATE TABLE mk_nip49_recovery_bundles (
+    id                    UUID NOT NULL,
+    community_id          UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    human_pubkey          BYTEA NOT NULL CHECK (length(human_pubkey) = 32),
+    object_key            TEXT NOT NULL CHECK (length(object_key) BETWEEN 1 AND 512),
+    sha256                BYTEA NOT NULL CHECK (length(sha256) = 32),
+    size_bytes            INTEGER NOT NULL CHECK (size_bytes BETWEEN 1 AND 4096),
+    created_by_grant_id   UUID NOT NULL,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    revoked_at            TIMESTAMPTZ,
+    revoked_by            BYTEA CHECK (revoked_by IS NULL OR length(revoked_by) = 32),
+    PRIMARY KEY (community_id, id),
+    FOREIGN KEY (community_id, created_by_grant_id)
+        REFERENCES mk_device_grants(community_id, id),
+    UNIQUE (community_id, object_key),
+    UNIQUE (community_id, sha256)
+);
+
+CREATE INDEX idx_mk_nip49_recovery_bundles_active
+    ON mk_nip49_recovery_bundles (community_id, human_pubkey, created_at DESC)
+    WHERE revoked_at IS NULL;
+
+CREATE TABLE mk_identity_successors (
+    id                    UUID NOT NULL,
+    community_id          UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    predecessor_pubkey    BYTEA NOT NULL CHECK (length(predecessor_pubkey) = 32),
+    successor_pubkey      BYTEA NOT NULL CHECK (length(successor_pubkey) = 32),
+    authorized_by         BYTEA NOT NULL CHECK (length(authorized_by) = 32),
+    authorization_event_id BYTEA NOT NULL CHECK (length(authorization_event_id) = 32),
+    incident_id           UUID NOT NULL,
+    reason                TEXT NOT NULL CHECK (length(reason) BETWEEN 8 AND 500),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    superseded_at         TIMESTAMPTZ,
+    CHECK (predecessor_pubkey <> successor_pubkey),
+    PRIMARY KEY (community_id, id),
+    UNIQUE (community_id, predecessor_pubkey),
+    UNIQUE (community_id, successor_pubkey),
+    UNIQUE (community_id, incident_id)
+);
+
+CREATE INDEX idx_mk_identity_successors_active
+    ON mk_identity_successors (community_id, predecessor_pubkey)
+    WHERE superseded_at IS NULL;
+
+CREATE TABLE mk_notification_preferences (
+    community_id          UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    human_pubkey          BYTEA NOT NULL CHECK (length(human_pubkey) = 32),
+    schema_version        SMALLINT NOT NULL DEFAULT 1 CHECK (schema_version = 1),
+    enabled_classes       JSONB NOT NULL,
+    quiet_start_minute    SMALLINT CHECK (quiet_start_minute BETWEEN 0 AND 1439),
+    quiet_end_minute      SMALLINT CHECK (quiet_end_minute BETWEEN 0 AND 1439),
+    timezone              TEXT CHECK (timezone IS NULL OR length(timezone) BETWEEN 1 AND 80),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK ((quiet_start_minute IS NULL) = (quiet_end_minute IS NULL)),
+    CHECK ((quiet_start_minute IS NULL) = (timezone IS NULL)),
+    CHECK (quiet_start_minute IS NULL OR quiet_start_minute <> quiet_end_minute),
+    PRIMARY KEY (community_id, human_pubkey)
+);
+
+CREATE TABLE mk_notification_delivery_dedupe (
+    community_id          UUID NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    human_pubkey          BYTEA NOT NULL CHECK (length(human_pubkey) = 32),
+    dedupe_key            BYTEA NOT NULL CHECK (length(dedupe_key) = 32),
+    notification_class    TEXT NOT NULL CHECK (notification_class IN (
+        'assignment', 'approval', 'deadline', 'mention',
+        'agent-outcome', 'important-transition'
+    )),
+    claimed_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at            TIMESTAMPTZ NOT NULL,
+    CHECK (expires_at > claimed_at),
+    PRIMARY KEY (community_id, human_pubkey, dedupe_key)
+);
+
+CREATE INDEX idx_mk_notification_delivery_dedupe_expiry
+    ON mk_notification_delivery_dedupe (expires_at);
+
+-- MK Ideas tables are declared after the base schema's universal fence sweep,
+-- so attach the same fail-closed community deletion fence explicitly.
+SELECT attach_community_write_fence('mk_entity_heads'::regclass);
+SELECT attach_community_write_fence('mk_entity_revisions'::regclass);
+SELECT attach_community_write_fence('mk_approval_decisions'::regclass);
+SELECT attach_community_write_fence('mk_service_grants'::regclass);
+SELECT attach_community_write_fence('mk_migration_items'::regclass);
+SELECT attach_community_write_fence('mk_device_grants'::regclass);
+SELECT attach_community_write_fence('mk_device_enrollment_challenges'::regclass);
+SELECT attach_community_write_fence('mk_device_recovery_requests'::regclass);
+SELECT attach_community_write_fence('mk_nip49_recovery_bundles'::regclass);
+SELECT attach_community_write_fence('mk_identity_successors'::regclass);
+SELECT attach_community_write_fence('mk_notification_preferences'::regclass);
+SELECT attach_community_write_fence('mk_notification_delivery_dedupe'::regclass);

@@ -6,6 +6,8 @@ import type { Project } from "@/features/projects/projectModels";
 import {
   entityLinkProjectRouteId,
   isEntityLink,
+  mkIdeasAreaForKind,
+  mkIdeasLabelForKind,
   parseEntityLink,
   type ParsedEntityLink,
 } from "@/shared/lib/entityLink";
@@ -156,13 +158,15 @@ function entityLinkPresentation(link: ParsedEntityLink) {
         label: link.dtag,
         tooltipFooter: "Project",
       };
-    case "mkideas":
+    case "mkideas": {
+      const label = mkIdeasLabelForKind(link.kind);
       return {
-        ariaLabel: `Open MK Ideas record ${link.id.slice(0, 8)}`,
+        ariaLabel: `Open MK Ideas ${label.toLowerCase()} ${link.id.slice(0, 8)}`,
         icon: "project" as const,
-        label: `MK Ideas · ${link.id.slice(0, 8)}`,
-        tooltipFooter: "MK Ideas operational record",
+        label: `${label} · ${link.id.slice(0, 8)}`,
+        tooltipFooter: `MK Ideas · ${label}`,
       };
+    }
   }
 }
 
@@ -172,14 +176,23 @@ function entityLinkPresentation(link: ParsedEntityLink) {
  * route id, so no read-model resolution is needed.
  */
 export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
-  const { goPeople, goProject, goStudio } = useAppNavigation();
+  const { goHome, goPeople, goProject, goStudio, goWork } = useAppNavigation();
   return React.useCallback(
     (link: ParsedEntityLink) => {
       if (link.type === "mkideas") {
-        if (link.kind === 30803) {
-          void goPeople({ force: true });
-        } else {
-          void goStudio({ force: true });
+        switch (mkIdeasAreaForKind(link.kind)) {
+          case "work":
+            void goWork({ force: true });
+            break;
+          case "people":
+            void goPeople({ force: true });
+            break;
+          case "studio":
+            void goStudio({ force: true });
+            break;
+          case "today":
+            void goHome({ force: true });
+            break;
         }
         return;
       }
@@ -201,7 +214,7 @@ export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
           : {}),
       });
     },
-    [goPeople, goProject, goStudio],
+    [goHome, goPeople, goProject, goStudio, goWork],
   );
 }
 

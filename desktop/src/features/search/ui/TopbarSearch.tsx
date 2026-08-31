@@ -19,15 +19,15 @@ import {
 } from "@/features/search/ui/SearchScopeControls";
 import { HighlightedSearchText } from "@/features/search/ui/HighlightedSearchText";
 import { useSearchMenuKeyboardNavigation } from "@/features/search/ui/useSearchMenuKeyboardNavigation";
+import {
+  getSearchHitContextLabel,
+  SearchHitContextLine,
+} from "@/features/search/ui/SearchHitContextLine";
 import type { Channel, SearchHit, UserSearchResult } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { normalizePubkey, truncatePubkey } from "@/shared/lib/pubkey";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import { useDeferredModalOpen } from "@/shared/ui/deferredModalOpen";
-import {
-  MENTION_CHIP_BASE_CLASSES,
-  MESSAGE_MARKDOWN_CLASS,
-} from "@/shared/ui/mentionChip";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
 
@@ -58,6 +58,7 @@ const SEARCH_RESULT_SECTION_ORDER = [
   "direct-messages",
   "people",
   "agents",
+  "mkideas",
   "messages",
   "actions",
 ] as const;
@@ -68,11 +69,6 @@ type SearchResultSection = {
   key: SearchResultSectionKey;
   results: SearchResult[];
   title: string;
-};
-
-type SearchHitContextLabel = {
-  channelLabel: string | null;
-  text: string;
 };
 
 function formatRelativeTime(unixSeconds: number) {
@@ -157,56 +153,6 @@ function getUserSecondaryLabel(user: UserSearchResult) {
   return null;
 }
 
-function getSearchHitChannelName(
-  hit: SearchHit,
-  channelLookup: ReadonlyMap<string, Channel>,
-  channelLabels?: Record<string, string>,
-) {
-  const channel = hit.channelId ? channelLookup.get(hit.channelId) : null;
-  const channelName =
-    (hit.channelId ? channelLabels?.[hit.channelId]?.trim() : null) ||
-    hit.channelName?.trim() ||
-    channel?.name.trim() ||
-    null;
-
-  if (!channelName) {
-    return null;
-  }
-
-  return channelName;
-}
-
-function getSearchHitContextLabel(
-  hit: SearchHit,
-  channelLookup: ReadonlyMap<string, Channel>,
-  channelLabels?: Record<string, string>,
-): SearchHitContextLabel {
-  const channel = hit.channelId ? channelLookup.get(hit.channelId) : null;
-  const channelName = getSearchHitChannelName(
-    hit,
-    channelLookup,
-    channelLabels,
-  );
-
-  if (channel?.channelType === "dm") {
-    return {
-      channelLabel: null,
-      text: "Direct message",
-    };
-  }
-
-  const isThread = hit.kind === 45003 || Boolean(hit.threadRootId);
-
-  return {
-    channelLabel: channelName,
-    text: channelName
-      ? `${isThread ? "Thread" : "Message"} in`
-      : isThread
-        ? "Thread"
-        : "Message",
-  };
-}
-
 function getResultSectionKey(result: SearchResult): SearchResultSectionKey {
   if (result.kind === "channel") {
     return result.channel.channelType === "dm" ? "direct-messages" : "channels";
@@ -218,6 +164,10 @@ function getResultSectionKey(result: SearchResult): SearchResultSectionKey {
 
   if (result.kind === "action") {
     return "actions";
+  }
+
+  if (result.kind === "mkideas") {
+    return "mkideas";
   }
 
   return "messages";
@@ -235,33 +185,11 @@ function getSectionTitle(sectionKey: SearchResultSectionKey) {
       return "Agents";
     case "messages":
       return "Most relevant";
+    case "mkideas":
+      return "MK Ideas";
     case "actions":
       return "Actions";
   }
-}
-
-function SearchHitContextLine({ label }: { label: SearchHitContextLabel }) {
-  return (
-    <span
-      className={cn(
-        MESSAGE_MARKDOWN_CLASS,
-        "mt-0 flex min-w-0 items-center gap-1.5 text-2xs font-medium leading-3 text-muted-foreground/80",
-      )}
-    >
-      <span className="shrink-0">{label.text}</span>
-      {label.channelLabel ? (
-        <span
-          className={cn(
-            MENTION_CHIP_BASE_CLASSES,
-            "search-channel-chip min-w-0 max-w-full overflow-hidden",
-          )}
-          data-channel-link=""
-        >
-          <span className="truncate">#{label.channelLabel}</span>
-        </span>
-      ) : null}
-    </span>
-  );
 }
 
 function groupSearchResults(results: SearchResult[]): SearchResultSection[] {
@@ -688,7 +616,9 @@ export function TopbarSearch({
           ? result.action.title
           : result.kind === "user"
             ? userDisplayName
-            : messageAuthorLabel;
+            : result.kind === "mkideas"
+              ? result.presentation.title
+              : messageAuthorLabel;
     const preview =
       result.kind === "channel"
         ? getChannelPreview(result.channel)
@@ -696,13 +626,25 @@ export function TopbarSearch({
           ? result.action.description
           : result.kind === "user"
             ? getUserSecondaryLabel(result.user)
-            : buildSearchResultPreview(result.hit.content, resultQuery);
+            : result.kind === "mkideas"
+              ? [
+                  result.presentation.label,
+                  result.presentation.status,
+                  result.presentation.version
+                    ? `v${result.presentation.version}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : buildSearchResultPreview(result.hit.content, resultQuery);
     const trailingLabel =
       result.kind === "channel"
         ? getChannelSuggestionMeta(result.channel)
         : result.kind === "message"
           ? formatRelativeTime(result.hit.createdAt)
-          : null;
+          : result.kind === "mkideas"
+            ? result.presentation.area
+            : null;
 
     return (
       <button

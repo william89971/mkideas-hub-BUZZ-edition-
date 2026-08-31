@@ -209,6 +209,11 @@ pub struct Config {
     /// are permitted regardless of auth method (API token, NIP-42).
     pub require_relay_membership: bool,
 
+    /// Staged MK Ideas device-grant rollout policy. Defaults to off and cannot
+    /// enforce until closed membership, recovery authority, and enrollment
+    /// completion are all explicitly configured.
+    pub mk_device_grants: crate::device_security::DeviceGrantConfig,
+
     /// Whether this deployment can serve huddle (voice) audio.
     ///
     /// Huddle audio frames are relayed peer-to-peer *within a single pod*
@@ -794,6 +799,13 @@ impl Config {
             rate_limits: rate_limit_config_from_env()?,
         };
 
+        let mk_device_grants = crate::device_security::DeviceGrantConfig::from_lookup(
+            |name| std::env::var(name).ok(),
+            require_relay_membership,
+            relay_owner_pubkey.is_some(),
+        )
+        .map_err(ConfigError::InvalidValue)?;
+
         if !require_auth_token {
             warn!(
                 "BUZZ_REQUIRE_AUTH_TOKEN is false — REST API requests bypass token auth. \
@@ -1226,6 +1238,7 @@ impl Config {
             metrics_port,
             pubkey_allowlist_enabled,
             require_relay_membership,
+            mk_device_grants,
             huddle_audio_available,
             mesh,
             mesh_demo_echo,
@@ -1354,6 +1367,11 @@ mod tests {
         assert!(
             !config.require_relay_membership,
             "require_relay_membership should default to false"
+        );
+        assert_eq!(
+            config.mk_device_grants.mode,
+            crate::device_security::DeviceGrantMode::Off,
+            "device-grant enforcement must default off"
         );
         assert!(
             config.relay_owner_pubkey.is_none(),

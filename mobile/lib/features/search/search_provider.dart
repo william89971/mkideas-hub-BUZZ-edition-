@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../shared/mkideas/mkideas_models.dart';
+import '../../shared/mkideas/mkideas_search.dart';
 import '../../shared/relay/relay.dart';
 import '../channels/channel.dart';
 import '../channels/channel_management_provider.dart';
@@ -53,6 +55,7 @@ class SearchHit {
 class SearchState {
   final String query;
   final List<SearchHit> messageResults;
+  final List<MkIdeasSearchResult> mkIdeasResults;
   final List<DirectoryUser> userResults;
   final List<Channel> channelResults;
   final bool isLoading;
@@ -61,6 +64,7 @@ class SearchState {
   const SearchState({
     this.query = '',
     this.messageResults = const [],
+    this.mkIdeasResults = const [],
     this.userResults = const [],
     this.channelResults = const [],
     this.isLoading = false,
@@ -70,6 +74,7 @@ class SearchState {
   const SearchState.initial()
     : query = '',
       messageResults = const [],
+      mkIdeasResults = const [],
       userResults = const [],
       channelResults = const [],
       isLoading = false,
@@ -78,6 +83,7 @@ class SearchState {
   SearchState copyWith({
     String? query,
     List<SearchHit>? messageResults,
+    List<MkIdeasSearchResult>? mkIdeasResults,
     List<DirectoryUser>? userResults,
     List<Channel>? channelResults,
     bool? isLoading,
@@ -85,6 +91,7 @@ class SearchState {
   }) => SearchState(
     query: query ?? this.query,
     messageResults: messageResults ?? this.messageResults,
+    mkIdeasResults: mkIdeasResults ?? this.mkIdeasResults,
     userResults: userResults ?? this.userResults,
     channelResults: channelResults ?? this.channelResults,
     isLoading: isLoading ?? this.isLoading,
@@ -136,16 +143,12 @@ class SearchNotifier extends Notifier<SearchState> {
       final session = ref.read(relaySessionProvider.notifier);
       final events = await session.fetchHistory(
         NostrFilter(
-          kinds: const [
+          kinds: [
             9,
-            EventKind.mkPerson,
-            EventKind.mkInterview,
-            EventKind.mkContent,
-            EventKind.mkApproval,
             40002,
             45001,
             45003,
-            EventKind.mkApprovalAction,
+            ...MkEntityType.values.map((type) => type.kind),
             EventKind.mkAgentProposal,
           ],
           search: query,
@@ -161,6 +164,9 @@ class SearchNotifier extends Notifier<SearchState> {
       };
 
       final hits = events
+          .where(
+            (event) => EventKind.channelMessageEventKinds.contains(event.kind),
+          )
           .map(
             (e) => SearchHit(
               eventId: e.id,
@@ -177,9 +183,14 @@ class SearchNotifier extends Notifier<SearchState> {
             ),
           )
           .toList();
+      final mkIdeasResults = MkIdeasSearchResult.fromEvents(events);
 
       if (state.query != query) return;
-      state = state.copyWith(messageResults: hits, isLoading: false);
+      state = state.copyWith(
+        messageResults: hits,
+        mkIdeasResults: mkIdeasResults,
+        isLoading: false,
+      );
     } catch (e) {
       if (state.query != query) return;
       state = state.copyWith(isLoading: false, error: e.toString());

@@ -6,6 +6,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../shared/mentions/agent_identity_provider.dart';
 import '../../shared/mentions/mention_tags.dart';
+import '../../shared/mkideas/mkideas_models.dart';
+import '../../shared/mkideas/mkideas_search.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/avatar_image.dart';
 import '../../shared/widgets/buzz_loading_indicator.dart';
@@ -27,6 +29,8 @@ import '../../shared/profile/user_cache_provider.dart';
 import '../../shared/profile/user_profile.dart';
 import 'recent_searches_provider.dart';
 import 'search_provider.dart';
+
+part 'search_page/mkideas_search_sections.dart';
 
 enum _SearchFilter { all, messages, channels, people }
 
@@ -98,10 +102,17 @@ double _searchHeaderFiltersHeight(BuildContext context) {
 }
 
 class SearchPage extends HookConsumerWidget {
-  const SearchPage({this.tabReselection, super.key});
+  const SearchPage({
+    this.tabReselection,
+    this.onMkIdeasResultSelected,
+    super.key,
+  });
 
   /// Notifies this page when its already-selected tab is tapped again.
   final ValueListenable<int>? tabReselection;
+
+  /// Resolves a typed MK Ideas result in the owning five-area shell.
+  final ValueChanged<MkIdeasSearchResult>? onMkIdeasResultSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -320,7 +331,7 @@ class SearchPage extends HookConsumerWidget {
                 child: BuzzSearchField(
                   controller: textController,
                   focusNode: focusNode,
-                  hintText: 'Search messages, channels, and people',
+                  hintText: 'Search MK Ideas and Team',
                   iconColor: searchPrimaryColor,
                   inputColor: searchPrimaryColor,
                   placeholderColor: searchPlaceholderColor,
@@ -411,6 +422,7 @@ class SearchPage extends HookConsumerWidget {
                         filter: activeFilter.value,
                         currentPubkey: currentPubkey,
                         onRecentSearchSelected: runRecentSearch,
+                        onMkIdeasResultSelected: onMkIdeasResultSelected,
                       ),
                     ),
                   ],
@@ -429,12 +441,14 @@ class _SearchBody extends ConsumerWidget {
   final _SearchFilter filter;
   final String? currentPubkey;
   final ValueChanged<String> onRecentSearchSelected;
+  final ValueChanged<MkIdeasSearchResult>? onMkIdeasResultSelected;
 
   const _SearchBody({
     required this.state,
     required this.filter,
     required this.currentPubkey,
     required this.onRecentSearchSelected,
+    required this.onMkIdeasResultSelected,
   });
 
   @override
@@ -463,7 +477,7 @@ class _SearchBody extends ConsumerWidget {
               ),
               const SizedBox(height: Grid.xs),
               Text(
-                'Search messages, channels, and people',
+                'Search MK Ideas records and Team conversations',
                 textAlign: TextAlign.center,
                 style: context.textTheme.bodyMedium?.copyWith(
                   color: context.colors.onSurfaceVariant,
@@ -481,8 +495,10 @@ class _SearchBody extends ConsumerWidget {
         filter == _SearchFilter.all || filter == _SearchFilter.people;
     final showMessages =
         filter == _SearchFilter.all || filter == _SearchFilter.messages;
+    final showMkIdeas = filter == _SearchFilter.all;
 
     final hasAnyResults =
+        state.mkIdeasResults.isNotEmpty ||
         state.channelResults.isNotEmpty ||
         state.userResults.isNotEmpty ||
         state.messageResults.isNotEmpty;
@@ -515,6 +531,12 @@ class _SearchBody extends ConsumerWidget {
             MediaQuery.viewInsetsOf(context).bottom,
       ),
       children: [
+        if (showMkIdeas && state.mkIdeasResults.isNotEmpty)
+          _MkIdeasSection(
+            results: state.mkIdeasResults,
+            onResultSelected: recordResultSelection,
+            onOpen: onMkIdeasResultSelected,
+          ),
         if (showChannels && state.channelResults.isNotEmpty)
           _ChannelsSection(
             channels: state.channelResults,
@@ -538,101 +560,6 @@ class _SearchBody extends ConsumerWidget {
               child: BuzzLoadingIndicator(
                 size: 36,
                 semanticLabel: 'Loading more search results',
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _RecentSearches extends StatelessWidget {
-  final List<String> searches;
-  final ValueChanged<String> onSelected;
-  final VoidCallback onClear;
-
-  const _RecentSearches({
-    required this.searches,
-    required this.onSelected,
-    required this.onClear,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      key: const Key('recent-searches-list'),
-      padding: EdgeInsets.only(
-        bottom:
-            Grid.xl +
-            MediaQuery.paddingOf(context).bottom +
-            MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            Grid.gutter,
-            Grid.xs,
-            Grid.xxs,
-            Grid.half,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Recent searches',
-                  key: const Key('recent-searches-heading'),
-                  style: activityContextTextStyle.copyWith(
-                    color: context.colors.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              TextButton(
-                key: const Key('clear-recent-searches'),
-                onPressed: onClear,
-                child: Text(
-                  'Clear',
-                  style: activityContextTextStyle.copyWith(
-                    color: context.colors.primary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        for (var index = 0; index < searches.length; index++)
-          InkWell(
-            key: ValueKey('recent-search-$index'),
-            onTap: () => onSelected(searches[index]),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: Grid.xl),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: Grid.gutter,
-                  vertical: Grid.twelve,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      LucideIcons.clock,
-                      size: 18,
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: Grid.twelve),
-                    Expanded(
-                      child: Text(
-                        searches[index],
-                        style: contentListTitleTextStyle.copyWith(
-                          color: context.colors.onSurface,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      LucideIcons.chevronRight,
-                      size: 16,
-                      color: context.colors.onSurfaceVariant,
-                    ),
-                  ],
-                ),
               ),
             ),
           ),

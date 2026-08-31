@@ -93,7 +93,11 @@ build-release:
     cargo build --workspace --release
 
 # Run repo lint, formatting, and repository policy checks
-check: fmt-check clippy desktop-check desktop-tauri-fmt-check desktop-tauri-clippy web-check mobile-check security-review-check file-size-check
+check: fmt-check clippy desktop-check desktop-tauri-fmt-check desktop-tauri-clippy web-check mobile-check security-review-check file-size-check mkideas-contract-check
+
+# Guard the centrally reserved NIP-MK kinds across Rust, desktop, and mobile.
+mkideas-contract-check:
+    node scripts/check-mkideas-event-registry.mjs
 
 # Validate the trusted security-review workflow support and renderer contract.
 security-review-check:

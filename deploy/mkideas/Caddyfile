@@ -1,0 +1,30 @@
+{
+  admin off
+}
+
+{$MKIDEAS_DOMAIN} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+    Permissions-Policy "camera=(), geolocation=(), microphone=(self)"
+    -Server
+  }
+
+  # Pairing is a controlled enrollment service. Keep its Compose profile down
+  # except during an approved enrollment window.
+  handle_path /pairing* {
+    reverse_proxy pairing:5000
+  }
+
+  # This route returns 502 while the separately gated push profile is absent.
+  handle /v1/deliveries/* {
+    reverse_proxy push-gateway:8080
+  }
+
+  handle {
+    reverse_proxy relay:3000
+  }
+}

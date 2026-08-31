@@ -7,12 +7,19 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../shared/deeplink/deep_link.dart';
+import '../../shared/deeplink/pending_deep_link_provider.dart';
+import '../../shared/mkideas/mkideas_provider.dart';
+import '../../shared/mkideas/mkideas_search.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/directional_transition_scope.dart';
 import '../../shared/widgets/mobile_tab_footer_backdrop.dart';
 import '../channels/channels_page.dart';
 import '../mkideas/mk_people_page.dart';
+import '../mkideas/mk_entity_detail_page.dart';
+import '../mkideas/mk_quick_capture_launcher.dart';
 import '../mkideas/mk_studio_page.dart';
+import '../mkideas/mk_sync_health_banner.dart';
 import '../mkideas/mk_today_page.dart';
 import '../mkideas/mk_work_page.dart';
 import '../search/search_page.dart';
@@ -88,6 +95,7 @@ class HomePage extends HookConsumerWidget {
     final searchReselection = useValueNotifier(0);
     final teamReselection = useValueNotifier(0);
     final settingsTransitionProgress = useValueNotifier(0.0);
+    final mkLinkInFlight = useRef<String?>(null);
     final reducedMotion = MediaQuery.of(context).disableAnimations;
     final tabContentTransitionProgress = reducedMotion
         ? 1.0
@@ -98,13 +106,150 @@ class HomePage extends HookConsumerWidget {
       _destinations.length,
     );
 
-    void openSearch() {
+    void pushMkRecord(
+      MkRecord record, {
+      String? community,
+      String? revisionEventId,
+    }) {
+      final destination = _tabIndexForMkArea(record.type.productArea);
+      if (destination != tabIndex.value) {
+        tabContentTransitionDirection.value = destination > tabIndex.value
+            ? 1
+            : -1;
+        tabIndex.value = destination;
+        if (reducedMotion) {
+          tabContentTransitionController.value = 1;
+        } else {
+          unawaited(tabContentTransitionController.forward(from: 0));
+        }
+      }
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => SearchPage(tabReselection: searchReselection),
+          builder: (_) => MkEntityDetailPage(
+            initialRecord: record,
+            community: community,
+            revisionEventId: revisionEventId,
+          ),
         ),
       );
     }
+
+    void openMkSearchResult(MkIdeasSearchResult result) {
+      final current = ref.read(mkIdeasProvider).asData?.value;
+      final record =
+          current?.headsByCoordinate[MkEntityCoordinate(
+            type: result.entityType,
+            entityId: result.entityId,
+          )] ??
+          result.record;
+      if (record == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This MK Ideas record is not available yet'),
+          ),
+        );
+        return;
+      }
+      Navigator.of(context).pop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        pushMkRecord(record, community: result.community);
+      });
+    }
+
+    void openSearch() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SearchPage(
+            tabReselection: searchReselection,
+            onMkIdeasResultSelected: openMkSearchResult,
+          ),
+        ),
+      );
+    }
+
+    Future<void> dispatchMkLink(MkIdeasDeepLink link) async {
+      final identity = link.toString();
+      if (mkLinkInFlight.value == identity) return;
+      mkLinkInFlight.value = identity;
+      try {
+        final preparation = await ref
+            .read(pendingDeepLinkProvider.notifier)
+            .prepareCommunity(link);
+        if (!context.mounted || ref.read(pendingDeepLinkProvider) != link) {
+          return;
+        }
+        if (preparation == DeepLinkCommunityPreparation.switched) return;
+        if (preparation == DeepLinkCommunityPreparation.unavailable ||
+            preparation == DeepLinkCommunityPreparation.failed) {
+          ref.read(pendingDeepLinkProvider.notifier).consume();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('MK Ideas community is not available'),
+            ),
+          );
+          return;
+        }
+
+        final snapshot = ref.read(mkIdeasProvider);
+        if (snapshot.isLoading) return;
+        final data = snapshot.asData?.value;
+        if (data == null) {
+          ref.read(pendingDeepLinkProvider.notifier).consume();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('MK Ideas could not synchronize')),
+          );
+          return;
+        }
+        final type = MkEntityType.fromKind(link.kind);
+        if (type == null) return;
+        final revisions = data.revisionsFor(type, link.entityId);
+        final record = link.eventId == null
+            ? data.headsByCoordinate[MkEntityCoordinate(
+                type: type,
+                entityId: link.entityId,
+              )]
+            : revisions
+                  .where((item) => item.eventId == link.eventId)
+                  .firstOrNull;
+        if (record == null) {
+          ref.read(pendingDeepLinkProvider.notifier).consume();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('MK Ideas record was not found in this workspace'),
+            ),
+          );
+          return;
+        }
+        ref.read(pendingDeepLinkProvider.notifier).consume();
+        pushMkRecord(
+          record,
+          community: link.community,
+          revisionEventId: link.eventId,
+        );
+      } finally {
+        mkLinkInFlight.value = null;
+      }
+    }
+
+    void maybeDispatchMkLink(BuzzDeepLink? link) {
+      if (link is MkIdeasDeepLink) unawaited(dispatchMkLink(link));
+    }
+
+    ref.listen<BuzzDeepLink?>(pendingDeepLinkProvider, (_, link) {
+      maybeDispatchMkLink(link);
+    });
+    ref.listen<AsyncValue<MkIdeasSnapshot>>(mkIdeasProvider, (_, _) {
+      maybeDispatchMkLink(ref.read(pendingDeepLinkProvider));
+    });
+    useEffect(() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          maybeDispatchMkLink(ref.read(pendingDeepLinkProvider));
+        }
+      });
+      return null;
+    }, const []);
 
     final pages = [
       MkTodayPage(onSearch: openSearch),
@@ -171,12 +316,36 @@ class HomePage extends HookConsumerWidget {
                             _tabContentTransitionDistance *
                             (1 - tabContentTransitionProgress),
                         opacity: tabContentTransitionProgress,
-                        child: ClipRect(
-                          child: IndexedStack(
-                            index: tabIndex.value,
-                            children: pages,
-                          ),
-                        ),
+                        child: tabIndex.value == 4
+                            ? ClipRect(
+                                child: IndexedStack(
+                                  index: tabIndex.value,
+                                  children: pages,
+                                ),
+                              )
+                            : Transform.translate(
+                                key: const ValueKey(
+                                  'mk-area-tab-transition-transform',
+                                ),
+                                offset: Offset(
+                                  tabContentTransitionDirection.value *
+                                      _tabContentTransitionDistance *
+                                      (1 - tabContentTransitionProgress),
+                                  0,
+                                ),
+                                child: Opacity(
+                                  key: const ValueKey(
+                                    'mk-area-tab-transition-opacity',
+                                  ),
+                                  opacity: tabContentTransitionProgress,
+                                  child: ClipRect(
+                                    child: IndexedStack(
+                                      index: tabIndex.value,
+                                      children: pages,
+                                    ),
+                                  ),
+                                ),
+                              ),
                       ),
                     ),
                   ),
@@ -199,6 +368,15 @@ class HomePage extends HookConsumerWidget {
                       rightInset: Grid.sm,
                     ),
                   ),
+                  Positioned.fill(
+                    child: MkQuickCaptureLauncher(
+                      navigationBarHeight: HomePage._tabBarHeight,
+                      navigationBarBottomGap: HomePage._tabBarBottomGap,
+                      systemBottomInset: systemBottomInset,
+                      leftInset: Grid.sm,
+                    ),
+                  ),
+                  const Positioned.fill(child: MkSyncHealthBanner()),
                 ],
               ),
             ),
@@ -247,6 +425,13 @@ class HomePage extends HookConsumerWidget {
     );
   }
 }
+
+int _tabIndexForMkArea(MkProductArea area) => switch (area) {
+  MkProductArea.today => 0,
+  MkProductArea.work => 1,
+  MkProductArea.people => 2,
+  MkProductArea.studio => 3,
+};
 
 double _floatingTabDestinationWidth(double screenWidth, int destinationCount) {
   final preferredDestinationWidth =
@@ -478,56 +663,61 @@ class _FloatingTabDestination extends StatelessWidget {
                     width: HomePage._tabIconSize + 8,
                     height: HomePage._tabIconSize + 8,
                     child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Center(
-                      child: AnimatedSwitcher(
-                        duration: reducedMotion
-                            ? Duration.zero
-                            : HomePage._tabIconWeightDuration,
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeOutCubic,
-                        transitionBuilder: (child, animation) =>
-                            FadeTransition(opacity: animation, child: child),
-                        child: Icon(
-                          icon,
-                          key: ValueKey('${destination.label}-$icon'),
-                          color: foregroundColor,
-                          size: HomePage._tabIconSize,
-                        ),
-                      ),
-                    ),
-                    if (showUnreadBadge)
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: AnimatedScale(
-                          key: const ValueKey('activity-tab-unread-dot-scale'),
-                          scale: selected ? 0 : 1,
-                          alignment: const Alignment(-0.5, 0.5),
-                          duration: reducedMotion
-                              ? Duration.zero
-                              : HomePage._tabUnreadBadgeDuration,
-                          curve: Curves.easeOutCubic,
-                          child: Container(
-                            key: const ValueKey('activity-tab-unread-dot'),
-                            width: 12,
-                            height: 12,
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: badgeOutlineColor,
-                              shape: BoxShape.circle,
-                            ),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: colorScheme.primary,
-                                shape: BoxShape.circle,
-                              ),
+                      clipBehavior: Clip.none,
+                      children: [
+                        Center(
+                          child: AnimatedSwitcher(
+                            duration: reducedMotion
+                                ? Duration.zero
+                                : HomePage._tabIconWeightDuration,
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeOutCubic,
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                ),
+                            child: Icon(
+                              icon,
+                              key: ValueKey('${destination.label}-$icon'),
+                              color: foregroundColor,
+                              size: HomePage._tabIconSize,
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                        if (showUnreadBadge)
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: AnimatedScale(
+                              key: const ValueKey(
+                                'activity-tab-unread-dot-scale',
+                              ),
+                              scale: selected ? 0 : 1,
+                              alignment: const Alignment(-0.5, 0.5),
+                              duration: reducedMotion
+                                  ? Duration.zero
+                                  : HomePage._tabUnreadBadgeDuration,
+                              curve: Curves.easeOutCubic,
+                              child: Container(
+                                key: const ValueKey('activity-tab-unread-dot'),
+                                width: 12,
+                                height: 12,
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: badgeOutlineColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.primary,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: Grid.quarter),

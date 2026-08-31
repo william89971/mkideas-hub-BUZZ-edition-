@@ -197,6 +197,31 @@ BEGIN
     END IF;
 END $$;
 
+-- pgschema does not execute the SELECT/DO statements that attach the universal
+-- community write fence. Converge every current MK tenant table explicitly.
+DO $$
+DECLARE
+    target REGCLASS;
+BEGIN
+    FOREACH target IN ARRAY ARRAY[
+        'mk_entity_heads'::regclass,
+        'mk_entity_revisions'::regclass,
+        'mk_approval_decisions'::regclass,
+        'mk_service_grants'::regclass,
+        'mk_migration_items'::regclass,
+        'mk_device_grants'::regclass,
+        'mk_device_enrollment_challenges'::regclass,
+        'mk_device_recovery_requests'::regclass,
+        'mk_nip49_recovery_bundles'::regclass,
+        'mk_identity_successors'::regclass,
+        'mk_notification_preferences'::regclass,
+        'mk_notification_delivery_dedupe'::regclass
+    ]
+    LOOP
+        PERFORM attach_community_write_fence(target);
+    END LOOP;
+END $$;
+
 -- pgschema reconciles DDL but does not apply seed DML or table storage
 -- parameters from schema/schema.sql. Restore those parts of the desired-state
 -- contract explicitly and fail the bootstrap if the live catalog disagrees.

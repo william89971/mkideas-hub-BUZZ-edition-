@@ -1,0 +1,178 @@
+name: MK Ideas Internal Artifact Preparation
+
+# Manual and disabled by default. Set the repository variable
+# MKIDEAS_INTERNAL_RELEASES_ENABLED=true only after the fork's runner spending,
+# package identifiers, and internal distribution policy are approved.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Internal artifact lane
+        required: true
+        type: choice
+        options: [all, windows, macos, android, ios]
+      confirmation:
+        description: Type PREPARE_INTERNAL_ARTIFACTS (does not publish)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mkideas-internal-artifacts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: vars.MKIDEAS_INTERNAL_RELEASES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      allowed: ${{ steps.guard.outputs.allowed }}
+    steps:
+      - id: guard
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          test "$REPOSITORY_OWNER" = "william89971" || {
+            echo "::error::This workflow is restricted to the MK Ideas fork owner."
+            exit 1
+          }
+          test "$CONFIRMATION" = "PREPARE_INTERNAL_ARTIFACTS" || {
+            echo "::error::Confirmation did not match."
+            exit 1
+          }
+          echo "allowed=true" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: gate
+    if: needs.gate.outputs.allowed == 'true' && (inputs.target == 'all' || inputs.target == 'windows')
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 24.14.1, package-manager-cache: false }
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with: { version: 11.4.0 }
+      - name: Install and build sidecars
+        shell: bash
+        run: |
+          pnpm install --frozen-lockfile
+          rustup target add "$TARGET"
+          cargo build --release --locked --target "$TARGET" -p buzz-acp -p buzz-agent -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
+          ./scripts/bundle-sidecars.sh "$TARGET"
+      - name: Build unsigned Windows NSIS package
+        shell: bash
+        env: { CMAKE_POLICY_VERSION_MINIMUM: "3.5" }
+        run: cd desktop && pnpm tauri build --target "$TARGET" --bundles nsis --config ../deploy/mkideas/release/tauri.internal.conf.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mkideas-windows-unsigned-${{ github.sha }}
+          path: desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    needs: gate
+    if: needs.gate.outputs.allowed == 'true' && (inputs.target == 'all' || inputs.target == 'macos')
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { persist-credentials: false }
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Build unsigned macOS package
+        shell: bash
+        run: |
+          pnpm install --frozen-lockfile
+          cargo build --release --locked -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
+          ./scripts/bundle-sidecars.sh
+          cd desktop
+          pnpm tauri build --bundles dmg --config ../deploy/mkideas/release/tauri.internal.conf.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mkideas-macos-unsigned-${{ github.sha }}
+          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  android:
+    needs: gate
+    if: needs.gate.outputs.allowed == 'true' && (inputs.target == 'all' || inputs.target == 'android')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { persist-credentials: false }
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Build debug-signed Android internal candidate
+        run: cd mobile && flutter pub get && flutter build apk --debug
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mkideas-android-debug-${{ github.sha }}
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  ios:
+    needs: gate
+    if: needs.gate.outputs.allowed == 'true' && (inputs.target == 'all' || inputs.target == 'ios')
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { persist-credentials: false }
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Build no-codesign iOS internal candidate
+        run: cd mobile && flutter pub get && flutter build ios --release --no-codesign
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mkideas-ios-no-codesign-${{ github.sha }}
+          path: mobile/build/ios/iphoneos/Runner.app
+          if-no-files-found: error
+          retention-days: 7
+
+  evidence:
+    needs: [gate, windows, macos, android, ios]
+    if: always() && needs.gate.outputs.allowed == 'true' && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with: { persist-credentials: false }
+      - name: Require the selected artifact lane to succeed
+        shell: bash
+        env:
+          TARGET: ${{ inputs.target }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          MACOS_RESULT: ${{ needs.macos.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+          IOS_RESULT: ${{ needs.ios.result }}
+        run: |
+          set -euo pipefail
+          require_success() {
+            test "$2" = "success" || { echo "::error::$1 lane finished as $2"; exit 1; }
+          }
+          if [[ "$TARGET" == "all" || "$TARGET" == "windows" ]]; then require_success windows "$WINDOWS_RESULT"; fi
+          if [[ "$TARGET" == "all" || "$TARGET" == "macos" ]]; then require_success macos "$MACOS_RESULT"; fi
+          if [[ "$TARGET" == "all" || "$TARGET" == "android" ]]; then require_success android "$ANDROID_RESULT"; fi
+          if [[ "$TARGET" == "all" || "$TARGET" == "ios" ]]; then require_success ios "$IOS_RESULT"; fi
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: internal-artifacts
+      - name: Create hashes, manifest, and source dependency SBOM
+        run: node deploy/mkideas/scripts/create-release-evidence.mjs internal-artifacts release-evidence
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mkideas-release-evidence-${{ github.sha }}
+          path: release-evidence
+          if-no-files-found: error
+          retention-days: 14

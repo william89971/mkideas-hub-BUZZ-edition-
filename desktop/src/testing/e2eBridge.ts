@@ -1491,7 +1491,10 @@ declare global {
 
 const DEFAULT_RELAY_HTTP_URL = "http://localhost:3000";
 const DEFAULT_RELAY_WS_URL = "ws://localhost:3000";
-const MKIDEAS_E2E_KINDS = new Set([30803, 30804, 30805, 30809, 48200, 48201]);
+const MKIDEAS_E2E_KINDS = new Set([
+  30800, 30801, 30802, 30803, 30804, 30805, 30806, 30807, 30808, 30809, 48200,
+  48201, 48202, 48203, 48204, 48205,
+]);
 
 // NIP event kinds the mock reaction handlers emit.
 const KIND_REACTION = 7; // NIP-25 reaction
@@ -9779,6 +9782,18 @@ async function handleSearchMessages(
         });
       }
     }
+    for (const event of window.__BUZZ_E2E_MKIDEAS_EVENTS__ ?? []) {
+      mockHits.push({
+        event_id: event.id,
+        content: event.content,
+        kind: event.kind,
+        pubkey: event.pubkey,
+        channel_id: null,
+        channel_name: null,
+        created_at: event.created_at,
+        score: 1,
+      });
+    }
 
     const authorSet = args.authors?.length
       ? new Set(args.authors.map((author) => author.toLowerCase()))
@@ -14038,6 +14053,88 @@ export function maybeInstallE2eTauriMocks() {
               ) as RelayEvent,
           ),
         );
+      case "query_mkideas_projection": {
+        const input = (
+          payload as {
+            input: {
+              projection: "heads" | "history";
+              kinds: number[];
+              community: string;
+              entityId?: string;
+              cursor?: string;
+              limit?: number;
+            };
+          }
+        ).input;
+        const limit = Math.max(1, Math.min(input.limit ?? 100, 200));
+        const matching = (window.__BUZZ_E2E_MKIDEAS_EVENTS__ ?? []).filter(
+          (event) =>
+            input.kinds.includes(event.kind) &&
+            event.tags.some(
+              (tag) => tag[0] === "h" && tag[1] === input.community,
+            ),
+        );
+        if (input.projection === "history") {
+          const history = matching
+            .filter((event) =>
+              event.tags.some(
+                (tag) => tag[0] === "d" && tag[1] === input.entityId,
+              ),
+            )
+            .filter((event) => {
+              const version = Number(
+                event.tags.find((tag) => tag[0] === "version")?.[1] ?? 0,
+              );
+              return !input.cursor || version < Number(input.cursor);
+            })
+            .sort((a, b) => {
+              const aVersion = Number(
+                a.tags.find((tag) => tag[0] === "version")?.[1] ?? 0,
+              );
+              const bVersion = Number(
+                b.tags.find((tag) => tag[0] === "version")?.[1] ?? 0,
+              );
+              return bVersion - aVersion;
+            });
+          const page = history.slice(0, limit);
+          const lastVersion = Number(
+            page.at(-1)?.tags.find((tag) => tag[0] === "version")?.[1] ?? 0,
+          );
+          return {
+            events: page,
+            nextCursor:
+              history.length > page.length && lastVersion > 0
+                ? String(lastVersion)
+                : null,
+          };
+        }
+        const heads = new Map<string, RelayEvent>();
+        for (const event of matching) {
+          const entityId = event.tags.find((tag) => tag[0] === "d")?.[1] ?? "";
+          if (!entityId) continue;
+          const key = `${event.kind}:${entityId}`;
+          const current = heads.get(key);
+          const version = Number(
+            event.tags.find((tag) => tag[0] === "version")?.[1] ?? 0,
+          );
+          const currentVersion = Number(
+            current?.tags.find((tag) => tag[0] === "version")?.[1] ?? 0,
+          );
+          if (!current || version > currentVersion) heads.set(key, event);
+        }
+        const ordered = [...heads.entries()].sort(([a], [b]) =>
+          a.localeCompare(b),
+        );
+        const after = input.cursor
+          ? ordered.findIndex(([key]) => key === input.cursor) + 1
+          : 0;
+        const page = ordered.slice(after, after + limit);
+        return {
+          events: page.map(([, event]) => event),
+          nextCursor:
+            after + page.length < ordered.length ? page.at(-1)?.[0] : null,
+        };
+      }
       case "sign_event":
         window.__BUZZ_E2E_SIGNED_EVENTS__?.push({
           content: (payload as { content: string }).content,

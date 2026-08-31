@@ -94,9 +94,7 @@ fn search_messages_filter_requests_prefix_mode_for_topbar_typeahead() {
     assert_eq!(filter["limit"], serde_json::json!(12));
     assert_eq!(
         filter["kinds"],
-        serde_json::json!([
-            9, 30803, 30804, 30805, 30809, 40002, 45001, 45003, 48200, 48201
-        ])
+        serde_json::json!([9, 30803, 30804, 30805, 30809, 40002, 45001, 45003, 48200, 48201])
     );
     assert_eq!(filter["#h"], serde_json::json!(["channel-1"]));
     assert!(filter.get("authors").is_none());

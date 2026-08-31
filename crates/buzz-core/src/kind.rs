@@ -664,6 +664,11 @@ pub const KIND_MK_MIGRATION_RECEIPT: u32 = 48202;
 pub const KIND_MK_GENERATED_SUMMARY: u32 = 48203;
 /// Service-authored MK Ideas maintenance or system activity.
 pub const KIND_MK_SYSTEM_ACTIVITY: u32 = 48204;
+/// Historical or human-approved external communication delivery record.
+///
+/// This kind records what happened after a separately human-approved outbound
+/// operation. Publishing it never grants permission to send a communication.
+pub const KIND_MK_EXTERNAL_COMMUNICATION: u32 = 48205;
 
 /// All registered kind constants — used for duplicate detection and iteration.
 pub const ALL_KINDS: &[u32] = &[
@@ -812,6 +817,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_MK_MIGRATION_RECEIPT,
     KIND_MK_GENERATED_SUMMARY,
     KIND_MK_SYSTEM_ACTIVITY,
+    KIND_MK_EXTERNAL_COMMUNICATION,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).
@@ -946,7 +952,7 @@ const _: () = assert!(!is_parameterized_replaceable(KIND_AGENT_TURN_METRIC));
 const _: () = assert!(KIND_AGENT_TURN_METRIC <= u16::MAX as u32);
 const _: () = assert!(is_parameterized_replaceable(KIND_MK_PERSON));
 const _: () = assert!(is_mkideas_state_kind(KIND_MK_APPROVAL));
-const _: () = assert!(is_mkideas_operation_kind(KIND_MK_SYSTEM_ACTIVITY));
+const _: () = assert!(is_mkideas_operation_kind(KIND_MK_EXTERNAL_COMMUNICATION));
 // Moderation kinds fit u16 and are neither replaceable nor ephemeral:
 // 1984 is a regular event (persisted to the queue, never fanned out);
 // 9040–9044 are direct commands (executed, never stored).
@@ -983,7 +989,7 @@ mod tests {
             .copied()
             .filter(|kind| is_mkideas_operation_kind(*kind))
             .collect();
-        assert_eq!(operation_kinds, (48200..=48204).collect::<Vec<_>>());
+        assert_eq!(operation_kinds, (48200..=48205).collect::<Vec<_>>());
     }
 
     #[test]

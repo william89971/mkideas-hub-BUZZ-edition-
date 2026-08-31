@@ -1,0 +1,108 @@
+{
+  "fixture_version": 1,
+  "scenario": "clip copilot proposes transcript-grounded clips against interview version 5",
+  "run_event": {
+    "kind": 48204,
+    "content": {
+      "schema_version": 2,
+      "activity_type": "agent_run",
+      "run_id": "10000000-0000-4000-8000-000000000004",
+      "persona_id": "content-clip-copilot",
+      "agent_pubkey": "4444444444444444444444444444444444444444444444444444444444444444",
+      "owner_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "community_id": "6d6b8f1a-3c5e-4f7a-9b2d-0e1f2a3b4c5d",
+      "request_event_id": "f444444444444444444444444444444444444444444444444444444444444444",
+      "target": {
+        "kind": 30804,
+        "id": "22222222-2222-4222-8222-222222222222",
+        "event_id": "a444444444444444444444444444444444444444444444444444444444444444",
+        "version": 5
+      },
+      "status": "succeeded",
+      "attempt": 1,
+      "started_at": "2026-08-30T16:15:00Z",
+      "completed_at": "2026-08-30T16:15:08Z"
+    }
+  },
+  "output_event": {
+    "kind": 48201,
+    "content": {
+      "schema_version": 2,
+      "proposal_id": "20000000-0000-4000-8000-000000000004",
+      "proposal_version": 1,
+      "run_id": "10000000-0000-4000-8000-000000000004",
+      "persona_id": "content-clip-copilot",
+      "agent_pubkey": "4444444444444444444444444444444444444444444444444444444444444444",
+      "community_id": "6d6b8f1a-3c5e-4f7a-9b2d-0e1f2a3b4c5d",
+      "target": {
+        "kind": 30804,
+        "id": "22222222-2222-4222-8222-222222222222",
+        "event_id": "a444444444444444444444444444444444444444444444444444444444444444",
+        "version": 5
+      },
+      "proposal_type": "timestamped_clips",
+      "template_version": "timestamped-clips.v2",
+      "provider": "fixture",
+      "model": "deterministic-local-v1",
+      "input_event_ids": [
+        "a444444444444444444444444444444444444444444444444444444444444444",
+        "e444444444444444444444444444444444444444444444444444444444444444"
+      ],
+      "input_hash": "b444444444444444444444444444444444444444444444444444444444444444",
+      "summary": "Two exact, synthetic transcript excerpts with caption drafts.",
+      "provenance": [
+        {
+          "source_id": "media:mkideas-v0-synthetic-interview-v1",
+          "source_type": "private_transcript",
+          "title": "MK Ideas synthetic interview transcript",
+          "locator": "media://mkideas-v0-synthetic-interview-v1",
+          "retrieved_at": "2026-08-30T16:15:01Z",
+          "sha256": "c444444444444444444444444444444444444444444444444444444444444444",
+          "media_version": 1,
+          "duration_ms": 58000
+        }
+      ],
+      "output": {
+        "transcript_media_id": "mkideas-v0-synthetic-interview-v1",
+        "transcript_sha256": "c444444444444444444444444444444444444444444444444444444444444444",
+        "transcript_version": 1,
+        "duration_ms": 58000,
+        "clips": [
+          {
+            "start_ms": 4000,
+            "end_ms": 18000,
+            "title": "Ideas begin as remembered conversations",
+            "caption": "The most useful ideas start as conversations worth remembering.",
+            "verbatim": "The most useful ideas start as conversations that somebody cared enough to remember."
+          },
+          {
+            "start_ms": 44000,
+            "end_ms": 58000,
+            "title": "Sources visible, humans responsible",
+            "caption": "Trust grows when sources stay visible and humans own the final call.",
+            "verbatim": "Trust grows when the source is visible and a human still owns the final call."
+          }
+        ]
+      },
+      "status": "proposed",
+      "review_state": "pending",
+      "started_at": "2026-08-30T16:15:00Z",
+      "completed_at": "2026-08-30T16:15:08Z",
+      "usage": {
+        "input_tokens": 250,
+        "output_tokens": 160,
+        "total_tokens": 410,
+        "cost_microunits": 0,
+        "currency": "USD"
+      }
+    }
+  },
+  "expected": {
+    "network_calls": 0,
+    "rendered_videos": 0,
+    "published_items": 0,
+    "human_action_required_for_state_change": true,
+    "protected_state_events": 0,
+    "approval_action_events": 0
+  }
+}

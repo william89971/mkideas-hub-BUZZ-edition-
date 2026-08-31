@@ -1,0 +1,89 @@
+{
+  "fixture_version": 1,
+  "scenario": "operations briefing summarizes an exact community snapshot without proposing state",
+  "run_event": {
+    "kind": 48204,
+    "content": {
+      "schema_version": 2,
+      "activity_type": "agent_run",
+      "run_id": "10000000-0000-4000-8000-000000000005",
+      "persona_id": "operations-briefing-assistant",
+      "agent_pubkey": "5555555555555555555555555555555555555555555555555555555555555555",
+      "owner_pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "community_id": "6d6b8f1a-3c5e-4f7a-9b2d-0e1f2a3b4c5d",
+      "request_event_id": "f555555555555555555555555555555555555555555555555555555555555555",
+      "snapshot": {
+        "window_start": "2026-08-29T16:20:00Z",
+        "window_end": "2026-08-30T16:20:00Z",
+        "head_digest": "a555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "status": "succeeded",
+      "attempt": 1,
+      "started_at": "2026-08-30T16:20:00Z",
+      "completed_at": "2026-08-30T16:20:03Z"
+    }
+  },
+  "output_event": {
+    "kind": 48203,
+    "content": {
+      "schema_version": 2,
+      "summary_id": "20000000-0000-4000-8000-000000000005",
+      "summary_version": 1,
+      "summary_type": "operations_briefing",
+      "run_id": "10000000-0000-4000-8000-000000000005",
+      "persona_id": "operations-briefing-assistant",
+      "agent_pubkey": "5555555555555555555555555555555555555555555555555555555555555555",
+      "community_id": "6d6b8f1a-3c5e-4f7a-9b2d-0e1f2a3b4c5d",
+      "template_version": "operations-briefing.v2",
+      "provider": "fixture",
+      "model": "deterministic-local-v1",
+      "snapshot": {
+        "window_start": "2026-08-29T16:20:00Z",
+        "window_end": "2026-08-30T16:20:00Z",
+        "head_digest": "a555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "input_event_ids": [
+        "e555555555555555555555555555555555555555555555555555555555555551",
+        "e555555555555555555555555555555555555555555555555555555555555552",
+        "e555555555555555555555555555555555555555555555555555555555555553"
+      ],
+      "input_hash": "b555555555555555555555555555555555555555555555555555555555555555",
+      "provenance": [
+        {
+          "source_id": "snapshot:today-fixture",
+          "source_type": "mk_current_heads",
+          "title": "Synthetic Today projection",
+          "locator": "buzz://mkideas/today?community=6d6b8f1a-3c5e-4f7a-9b2d-0e1f2a3b4c5d",
+          "retrieved_at": "2026-08-30T16:20:01Z",
+          "sha256": "c555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ],
+      "output": {
+        "approvals": ["One synthetic clip proposal awaits a partner review."],
+        "deadlines": ["One synthetic interview preparation task is due tomorrow."],
+        "blocked_work": ["A synthetic outreach draft is blocked by missing contact-channel confirmation."],
+        "upcoming": ["A synthetic interview is scheduled in two days."],
+        "agent_outcomes": ["Guest Researcher completed one sourced draft."],
+        "uncertainties": ["The fixture contains no calendar-provider confirmation."],
+        "recommendations": ["A partner may review the pending clip proposal next."]
+      },
+      "status": "informational",
+      "started_at": "2026-08-30T16:20:00Z",
+      "completed_at": "2026-08-30T16:20:03Z",
+      "usage": {
+        "input_tokens": 420,
+        "output_tokens": 140,
+        "total_tokens": 560,
+        "cost_microunits": 0,
+        "currency": "USD"
+      }
+    }
+  },
+  "expected": {
+    "network_calls": 0,
+    "informational_only": true,
+    "human_action_required_for_state_change": true,
+    "protected_state_events": 0,
+    "approval_action_events": 0
+  }
+}

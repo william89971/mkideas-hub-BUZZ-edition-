@@ -1,0 +1,358 @@
+name: ${COMPOSE_PROJECT_NAME:-mkideas-buzz}
+
+services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    environment:
+      MKIDEAS_DOMAIN: ${MKIDEAS_DOMAIN:?set MKIDEAS_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      relay:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [edge, private]
+    security_opt: [no-new-privileges:true]
+
+  relay:
+    image: ${MKIDEAS_RELAY_IMAGE:?set immutable MKIDEAS_RELAY_IMAGE}
+    entrypoint: [/bin/sh, /opt/mkideas/load-relay-secrets.sh]
+    environment:
+      BUZZ_BIND_ADDR: 0.0.0.0:3000
+      BUZZ_HEALTH_PORT: "8080"
+      BUZZ_METRICS_PORT: "9102"
+      POSTGRES_DB: ${POSTGRES_DB:-mkideas}
+      POSTGRES_USER: ${POSTGRES_USER:-mkideas}
+      BUZZ_S3_ENDPOINT: http://minio:9000
+      BUZZ_S3_ADDRESSING_STYLE: path
+      BUZZ_S3_BUCKET: ${BUZZ_S3_BUCKET:-mkideas-private-media}
+      BUZZ_S3_REGION: ${BUZZ_S3_REGION:-us-east-1}
+      BUZZ_GIT_REPO_PATH: /data/git
+      BUZZ_AUTO_MIGRATE: ${BUZZ_AUTO_MIGRATE:-false}
+      BUZZ_PUSH_ENABLED: ${BUZZ_PUSH_ENABLED:-false}
+      RUST_LOG: ${RUST_LOG:-buzz_relay=info,buzz_db=info,buzz_auth=info}
+    volumes:
+      - ./load-relay-secrets.sh:/opt/mkideas/load-relay-secrets.sh:ro
+      - relay-git:/data/git
+    secrets:
+      - postgres_password
+      - redis_password
+      - s3_access_key
+      - s3_secret_key
+      - relay_private_key
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+    healthcheck:
+      test: [CMD-SHELL, "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8080; printf \"GET /_readiness HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q \"200 OK\" <&3'"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 30s
+    expose: ["3000", "8080", "9102"]
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  pairing:
+    image: ${MKIDEAS_RELAY_IMAGE:?set immutable MKIDEAS_RELAY_IMAGE}
+    profiles: [pairing]
+    entrypoint: [/usr/local/bin/buzz-pair-relay]
+    environment:
+      BUZZ_PAIR_RELAY_BIND_ADDR: 0.0.0.0:5000
+    expose: ["5000"]
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mkideas}
+      POSTGRES_USER: ${POSTGRES_USER:-mkideas}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets: [postgres_password]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  redis:
+    image: redis:7.4.5-alpine
+    entrypoint: [/bin/sh, /opt/mkideas/redis-entrypoint.sh]
+    volumes:
+      - redis-data:/data
+      - ./redis-entrypoint.sh:/opt/mkideas/redis-entrypoint.sh:ro
+    secrets: [redis_password]
+    healthcheck:
+      test: [CMD-SHELL, "REDISCLI_AUTH=$$(cat /run/secrets/redis_password) redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/s3_access_key
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/s3_secret_key
+    secrets: [s3_access_key, s3_secret_key]
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: [CMD, curl, -f, http://127.0.0.1:9000/minio/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    entrypoint: [/bin/sh, /opt/mkideas/minio-init.sh]
+    environment:
+      BUZZ_S3_BUCKET: ${BUZZ_S3_BUCKET:-mkideas-private-media}
+    volumes: [./minio-init.sh:/opt/mkideas/minio-init.sh:ro]
+    secrets: [s3_access_key, s3_secret_key]
+    depends_on:
+      minio: { condition: service_healthy }
+    restart: "no"
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  agent-runner:
+    image: ${MKIDEAS_AGENT_IMAGE:?set immutable MKIDEAS_AGENT_IMAGE}
+    profiles: [agents]
+    entrypoint: [/bin/sh, /opt/mkideas/load-agent-secrets.sh]
+    environment:
+      BUZZ_RELAY_URL: ws://relay:3000
+      BUZZ_ACP_SUBSCRIBE: config
+      BUZZ_ACP_CONFIG: /etc/mkideas/agent-subscriptions.toml
+      BUZZ_ACP_AGENTS: "1"
+      BUZZ_ACP_TURN_TIMEOUT: "320"
+      BUZZ_ACP_NO_IGNORE_SELF: "false"
+    volumes:
+      - ./load-agent-secrets.sh:/opt/mkideas/load-agent-secrets.sh:ro
+      - ./agent-subscriptions.toml:/etc/mkideas/agent-subscriptions.toml:ro
+      - agent-workspace:/workspace
+    secrets: [agent_private_key]
+    depends_on:
+      relay: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [private, egress]
+    security_opt: [no-new-privileges:true]
+
+  admin:
+    image: ${MKIDEAS_RELAY_IMAGE:?set immutable MKIDEAS_RELAY_IMAGE}
+    profiles: [maintenance]
+    entrypoint: [/bin/sh, /opt/mkideas/load-admin-secrets.sh]
+    command: [--help]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mkideas}
+      POSTGRES_USER: ${POSTGRES_USER:-mkideas}
+    volumes: [./load-admin-secrets.sh:/opt/mkideas/load-admin-secrets.sh:ro]
+    secrets: [postgres_password]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  push-gateway:
+    image: ${MKIDEAS_PUSH_IMAGE:?set immutable MKIDEAS_PUSH_IMAGE}
+    profiles: [push]
+    entrypoint: [/bin/sh, /opt/mkideas/load-push-secrets.sh]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mkideas}
+      POSTGRES_USER: ${POSTGRES_USER:-mkideas}
+      BUZZ_PUSH_BIND_ADDR: 0.0.0.0:8080
+      BUZZ_PUSH_HEALTH_ADDR: 0.0.0.0:8081
+      BUZZ_PUSH_PUBLIC_DELIVERY_URL: https://${MKIDEAS_DOMAIN:?set MKIDEAS_DOMAIN}/v1/deliveries/apns
+      BUZZ_PUSH_DOGFOOD_APP_ATTEST_APP_ID: ${MKIDEAS_APNS_APP_ID:-REPLACE_AFTER_APPROVAL}
+      BUZZ_PUSH_DOGFOOD_APNS_TOPIC: ${MKIDEAS_APNS_TOPIC:-REPLACE_AFTER_APPROVAL}
+      BUZZ_PUSH_DOGFOOD_APNS_ENVIRONMENT: ${MKIDEAS_APNS_ENVIRONMENT:-sandbox}
+      BUZZ_PUSH_DOGFOOD_APNS_CERT_PATH: /run/secrets/apns_identity.pem
+      BUZZ_PUSH_APP_ATTEST_ROOT_CERT_PATH: /run/secrets/app_attest_root.pem
+    volumes: [./load-push-secrets.sh:/opt/mkideas/load-push-secrets.sh:ro]
+    secrets:
+      - postgres_password
+      - push_grant_keys
+      - push_token_keys
+      - apns_identity
+      - app_attest_root
+    depends_on:
+      postgres: { condition: service_healthy }
+    expose: ["8080", "8081"]
+    restart: unless-stopped
+    networks: [private, egress]
+    security_opt: [no-new-privileges:true]
+
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    profiles: [monitoring]
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=30d]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["${PROMETHEUS_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"]
+    depends_on:
+      relay: { condition: service_healthy }
+      alertmanager: { condition: service_started }
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: [monitoring]
+    command: [--config.file=/etc/alertmanager/alertmanager.yml, --storage.path=/alertmanager]
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports: ["${ALERTMANAGER_BIND:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"]
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.27.0
+    profiles: [monitoring]
+    command: [--config.file=/etc/blackbox/blackbox.yml]
+    volumes: [./blackbox.yml:/etc/blackbox/blackbox.yml:ro]
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    profiles: [monitoring]
+    entrypoint: [/bin/sh, /opt/mkideas/postgres-exporter.sh]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mkideas}
+      POSTGRES_USER: ${POSTGRES_USER:-mkideas}
+    volumes: [./postgres-exporter.sh:/opt/mkideas/postgres-exporter.sh:ro]
+    secrets: [postgres_password]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    profiles: [monitoring]
+    entrypoint: [/bin/sh, /opt/mkideas/redis-exporter.sh]
+    volumes: [./redis-exporter.sh:/opt/mkideas/redis-exporter.sh:ro]
+    secrets: [redis_password]
+    depends_on:
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  backup-database:
+    image: postgres:17.6-alpine
+    profiles: [maintenance]
+    entrypoint: [/bin/sh, /opt/mkideas/backup-database.sh]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mkideas}
+      POSTGRES_USER: ${POSTGRES_USER:-mkideas}
+    volumes:
+      - ./backup-database.sh:/opt/mkideas/backup-database.sh:ro
+      - backup-staging:/staging
+    secrets: [postgres_password]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  backup-media:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    profiles: [maintenance]
+    entrypoint: [/bin/sh, /opt/mkideas/backup-media.sh]
+    environment:
+      BUZZ_S3_BUCKET: ${BUZZ_S3_BUCKET:-mkideas-private-media}
+    volumes:
+      - ./backup-media.sh:/opt/mkideas/backup-media.sh:ro
+      - backup-staging:/staging
+    secrets: [s3_access_key, s3_secret_key]
+    depends_on:
+      minio: { condition: service_healthy }
+    restart: "no"
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+
+  restic:
+    image: restic/restic:0.18.1
+    profiles: [maintenance]
+    entrypoint: [/bin/sh, /opt/mkideas/load-restic-secrets.sh]
+    environment:
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:?set off-server RESTIC_REPOSITORY}
+    volumes:
+      - ./load-restic-secrets.sh:/opt/mkideas/load-restic-secrets.sh:ro
+      - backup-staging:/source/staging:ro
+      - relay-git:/source/relay-git:ro
+      - restore-staging:/restore
+    secrets:
+      - restic_password
+      - backup_s3_access_key
+      - backup_s3_secret_key
+    restart: "no"
+    networks: [private, egress]
+    security_opt: [no-new-privileges:true]
+
+secrets:
+  postgres_password: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/postgres_password }
+  redis_password: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/redis_password }
+  s3_access_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/s3_access_key }
+  s3_secret_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/s3_secret_key }
+  relay_private_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/relay_private_key }
+  agent_private_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/agent_private_key }
+  restic_password: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/restic_password }
+  backup_s3_access_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/backup_s3_access_key }
+  backup_s3_secret_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/backup_s3_secret_key }
+  push_grant_keys: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/push_grant_keys }
+  push_token_keys: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/push_token_keys }
+  apns_identity: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/apns_identity.pem }
+  app_attest_root: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/app_attest_root.pem }
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  relay-git:
+  caddy-data:
+  caddy-config:
+  agent-workspace:
+  prometheus-data:
+  alertmanager-data:
+  backup-staging:
+  restore-staging:
+
+networks:
+  edge:
+  egress:
+  private:
+    internal: true

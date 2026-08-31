@@ -64,6 +64,7 @@ abstract final class EventKind {
   static const mkMigrationReceipt = 48202;
   static const mkGeneratedSummary = 48203;
   static const mkSystemActivity = 48204;
+  static const mkExternalCommunication = 48205;
 
   /// Event kinds that represent user-visible channel messages.
   static const channelMessageEventKinds = [

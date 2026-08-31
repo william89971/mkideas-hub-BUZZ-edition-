@@ -1,0 +1,67 @@
+{
+  "fixture_version": 1,
+  "scenario": "a prior guest proposal becomes stale when the shared head advances",
+  "proposal_event": {
+    "kind": 48201,
+    "content": {
+      "schema_version": 2,
+      "proposal_id": "40000000-0000-4000-8000-000000000001",
+      "proposal_version": 1,
+      "run_id": "30000000-0000-4000-8000-000000000005",
+      "persona_id": "guest-researcher",
+      "agent_pubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+      "community_id": "6d6b8f1a-3c5e-4f7a-9b2d-0e1f2a3b4c5d",
+      "target": {
+        "kind": 30803,
+        "id": "11111111-1111-4111-8111-111111111111",
+        "event_id": "a711111111111111111111111111111111111111111111111111111111111111",
+        "version": 7
+      },
+      "proposal_type": "guest_research",
+      "template_version": "guest-research.v2",
+      "provider": "fixture",
+      "model": "deterministic-local-v1",
+      "input_event_ids": [
+        "a711111111111111111111111111111111111111111111111111111111111111"
+      ],
+      "input_hash": "b711111111111111111111111111111111111111111111111111111111111111",
+      "summary": "Synthetic proposal retained for history after its target advanced.",
+      "provenance": [
+        {
+          "source_id": "fixture:stale-input",
+          "source_type": "synthetic_document",
+          "title": "Synthetic stale source",
+          "locator": "fixture://mkideas/stale-input",
+          "retrieved_at": "2026-08-30T16:40:01Z",
+          "sha256": "c711111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "output": {
+        "why_now": "Historical fixture output retained for audit.",
+        "verified_facts": [],
+        "inferences": [],
+        "angles": [],
+        "questions": [],
+        "uncertainties": ["The target changed after this result was produced."]
+      },
+      "status": "proposed",
+      "review_state": "stale",
+      "stale": {
+        "reason": "target_head_advanced",
+        "detected_at": "2026-08-30T16:41:00Z",
+        "expected_event_id": "a711111111111111111111111111111111111111111111111111111111111111",
+        "expected_version": 7,
+        "current_event_id": "a811111111111111111111111111111111111111111111111111111111111111",
+        "current_version": 8
+      },
+      "started_at": "2026-08-30T16:40:00Z",
+      "completed_at": "2026-08-30T16:40:05Z"
+    }
+  },
+  "expected": {
+    "approvable": false,
+    "requires_fresh_run": true,
+    "protected_state_events": 0,
+    "approval_action_events": 0
+  }
+}

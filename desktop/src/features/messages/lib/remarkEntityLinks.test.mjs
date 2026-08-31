@@ -20,6 +20,7 @@ test("turns every bare Buzz entity permalink family into a chip node", () => {
     `buzz://project?owner=${owner}&d=onboarding`,
     `buzz://pr?id=${id}&owner=${owner}&d=buzz`,
     `buzz://issue?id=${id}&owner=${owner}&d=buzz`,
+    "buzz://mkideas/entity?community=relay.mkideas.org&kind=30802&d=11111111-1111-4111-8111-111111111111",
   ];
   for (const link of links) {
     const children = run(link);

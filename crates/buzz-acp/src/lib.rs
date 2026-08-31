@@ -4,6 +4,8 @@ mod acp;
 mod config;
 mod engram_fetch;
 mod filter;
+pub mod mkideas;
+pub mod mkideas_fake;
 mod observer;
 mod pool;
 mod pool_lifecycle;

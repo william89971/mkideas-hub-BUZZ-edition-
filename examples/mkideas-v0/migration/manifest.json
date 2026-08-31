@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "source_system": "mkideas-command-center",
+  "source_workspace_id": "11111111-1111-4111-8111-111111111111",
+  "source_schema_sha256": "fecafadece7a39a152b9c002052f89cf0b2a77f5d5a59a7a5022583f11465575",
+  "exported_at": "2026-08-30T00:00:00Z",
+  "dataset_sha256": "2c6e06f680f34ab0f3df54134d6bb0c12f32bc455c5bdc434938ba1c6a696f31",
+  "tables": [
+    {"name":"activity_events","file":"tables/activity_events.ndjson","row_count":1,"sha256":"368e0593a29360c8db0d6dfd704283cd1fb99601fa7cbd54338ff01c1bf0b2c7"},
+    {"name":"agent_runs","file":"tables/agent_runs.ndjson","row_count":1,"sha256":"b203150182165a3685536387d79099f73ee83545fc71db5e9a0284982f38bf0d"},
+    {"name":"approval_events","file":"tables/approval_events.ndjson","row_count":1,"sha256":"c6f170adcd60d64b390562732d0d60631acb8092e73e79054b36757341509924"},
+    {"name":"approvals","file":"tables/approvals.ndjson","row_count":2,"sha256":"13c175dfecee6d6b6c74f3fb20a6df4f1555402e8ec8bc58aaff240cba71401d"},
+    {"name":"attention_items","file":"tables/attention_items.ndjson","row_count":1,"sha256":"ff0a5a9e5c99b3719aa35e93b36cb50a24f50996c3e26a6443c88d562244284b"},
+    {"name":"audit_events","file":"tables/audit_events.ndjson","row_count":1,"sha256":"9c743d4c4a9b757118e48d95c39cf3141c8c03902a6980da5e260af420877adb"},
+    {"name":"clip_candidates","file":"tables/clip_candidates.ndjson","row_count":1,"sha256":"97b6c64ec991bac11034e03db8723c3be2db2260be6f027a0c7f11d2ed1a319b"},
+    {"name":"clip_transcript_segments","file":"tables/clip_transcript_segments.ndjson","row_count":1,"sha256":"322d59f341e01566a9d5bda2c63d83c430cffd49bc8450367ab80ba9bf9fd4db"},
+    {"name":"comments","file":"tables/comments.ndjson","row_count":1,"sha256":"24b01cae23e0afc7399f31a0793a26961dc8a3b63bae31d7046d23e8e83d7762"},
+    {"name":"content_items","file":"tables/content_items.ndjson","row_count":1,"sha256":"fc277e2c48e150b6ee0c305db457c9ab34737ee6c260cc540930d5da40b9a540"},
+    {"name":"content_platforms","file":"tables/content_platforms.ndjson","row_count":1,"sha256":"51c6be7d9ccf2312a7e59b54edeb5a1fe6a51b1b6da920cadd7955b42d90938a"},
+    {"name":"content_qc_findings","file":"tables/content_qc_findings.ndjson","row_count":1,"sha256":"9283ba4d0197c188fa74fd33bbbc2361dbe0a3ebce655f9ea83a3c4735bdc5a1"},
+    {"name":"content_versions","file":"tables/content_versions.ndjson","row_count":1,"sha256":"0de79133b17d8f391b3da9ce1cf88da7ecd1f50756a47a206939c20ef30a97bd"},
+    {"name":"guest_communications","file":"tables/guest_communications.ndjson","row_count":1,"sha256":"3c4de72122ae5d648d03303fe8bb785075344590cd0cd1b19f01bd1164e8bd9e"},
+    {"name":"guest_notes","file":"tables/guest_notes.ndjson","row_count":1,"sha256":"8e763ac52c9d34ae52bb759ee644233ddfb4aaaaa12a5aff1c3c5f4888b84e46"},
+    {"name":"guest_research_briefs","file":"tables/guest_research_briefs.ndjson","row_count":1,"sha256":"bf81093dff3c10c8239429f6a6087aee81b0a1b9ec88378f80dd936f73d20258"},
+    {"name":"guest_research_facts","file":"tables/guest_research_facts.ndjson","row_count":1,"sha256":"752ddee38a8aaf963a0b0b6fc8b4ea6940f69bf55c66c1905f784356e90506e5"},
+    {"name":"guest_research_themes","file":"tables/guest_research_themes.ndjson","row_count":1,"sha256":"7a4645ecdbf8ab75965402336d4fe46fe79a35cd8572a7ebc7511606f6ee52ec"},
+    {"name":"guest_tags","file":"tables/guest_tags.ndjson","row_count":1,"sha256":"542fb3013e5f630f289967fe3bedf8f11860275f14d30d310ed18b0093d21e68"},
+    {"name":"guest_topics","file":"tables/guest_topics.ndjson","row_count":1,"sha256":"2b27166360d8506a77b580f2238e2c2d9439853afc4b8f53831cf4f674de0205"},
+    {"name":"guests","file":"tables/guests.ndjson","row_count":1,"sha256":"4c9bf1ca9b11e5153dc54b381f2dbf7a739db1723a33ae5a139728ff8d8f3388"},
+    {"name":"interview_members","file":"tables/interview_members.ndjson","row_count":1,"sha256":"de3847594d810c926d7cfa08ae61da103ae31e637523c1d4b7e50735c573261f"},
+    {"name":"interview_questions","file":"tables/interview_questions.ndjson","row_count":2,"sha256":"b05e535e0eb859a49a8d2db24510461643cc48f76cedb33ed1dd7b6685d58738"},
+    {"name":"interviews","file":"tables/interviews.ndjson","row_count":1,"sha256":"8e85283c04366e0c540742333ea35d52e6e6aa49d294ab1ff7ead51bf5cb5763"},
+    {"name":"memberships","file":"tables/memberships.ndjson","row_count":3,"sha256":"bac3bf4bf388209e9974a8cbe8848d38069fcc0810df3e2349ee186e747005b6"},
+    {"name":"notifications","file":"tables/notifications.ndjson","row_count":1,"sha256":"9c172c89ec87721063ee4a9ee69fcbdd6b7bbc5635fe9cbd4157f0d107621a04"},
+    {"name":"organizations","file":"tables/organizations.ndjson","row_count":1,"sha256":"dcd3965b1d01d79f7eff059765520f0a62eb9f5af28d3c28c1d4643a8209c66a"},
+    {"name":"outreach_draft_versions","file":"tables/outreach_draft_versions.ndjson","row_count":2,"sha256":"d4a6e10014d9a2641925f881fc9ce37284db863461fdce71f5e2fd1bcc2c8131"},
+    {"name":"outreach_send_claims","file":"tables/outreach_send_claims.ndjson","row_count":1,"sha256":"a17f006e59a8237189136d612a24d158d95c34aab37cb57f772ca53c7c8349fb"},
+    {"name":"tasks","file":"tables/tasks.ndjson","row_count":1,"sha256":"bcff03da7c072a7f9a09909fd2af2cbfa18d32b08b501571bf6d0183fc422f4e"},
+    {"name":"transcript_segments","file":"tables/transcript_segments.ndjson","row_count":2,"sha256":"e9f6f02f99310d17535a18ee62192f544abee4d221bd6e439c37575ebc7cb143"},
+    {"name":"workspaces","file":"tables/workspaces.ndjson","row_count":1,"sha256":"d073117d420434c64492b818515d32122d87420f8b9b95313999298a0791f190"}
+  ],
+  "media": [
+    {
+      "source": "interview:60000000-0000-4000-8000-000000000001",
+      "file": "attachments/synthetic-interview.vtt",
+      "sha256": "af532045c2e4735789586921d579ca57d979f9a2750060daca8dffc1daad691f",
+      "mime_type": "text/vtt",
+      "size": 226
+    }
+  ],
+  "excluded_fields": [
+    "users.auth_user_id",
+    "workspace_invitations.token_hash",
+    "external_oauth_credentials",
+    "database_credentials"
+  ]
+}

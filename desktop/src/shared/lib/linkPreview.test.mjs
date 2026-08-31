@@ -242,6 +242,7 @@ test("extractSupportedLinkPreviews excludes Buzz entity links while keeping exte
     `buzz://repo?owner=${BUZZ_OWNER}&d=buzz-world`,
     `buzz://issue?id=${BUZZ_EVENT_ID}&owner=${BUZZ_OWNER}&d=buzz-world`,
     `buzz://pr?id=${BUZZ_EVENT_ID}&owner=${BUZZ_OWNER}&d=buzz-world`,
+    "buzz://mkideas/entity?community=relay.mkideas.org&kind=30802&d=11111111-1111-4111-8111-111111111111",
   ];
 
   assert.deepEqual(
@@ -255,7 +256,7 @@ test("extractSupportedLinkPreviews excludes Buzz entity links while keeping exte
 test("extractSupportedLinkPreviews excludes markdown-labeled Buzz entity links", () => {
   assert.deepEqual(
     extractSupportedLinkPreviews(
-      `[Project](buzz://project?owner=${BUZZ_OWNER}&d=buzz-world)`,
+      `[Project](buzz://project?owner=${BUZZ_OWNER}&d=buzz-world) [Task](buzz://mkideas/entity?community=relay.mkideas.org&kind=30802&d=11111111-1111-4111-8111-111111111111)`,
     ),
     [],
   );

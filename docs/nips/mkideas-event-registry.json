@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "registry_version": 2,
+  "protocol": "NIP-MK",
+  "state_range": [30800, 30899],
+  "operation_range": [48200, 48299],
+  "shared_coordinate": ["community", "kind", "d"],
+  "canonical_deep_link": "buzz://mkideas/entity?community={h}&kind={kind}&d={uuid}&event={optional_event_id}",
+  "state_envelope": {
+    "required_tags": ["d", "h", "version", "status"],
+    "required_content": [
+      "schema_version",
+      "record_type",
+      "entity_id",
+      "version",
+      "status",
+      "source",
+      "provenance"
+    ],
+    "schema_version": 2,
+    "previous_event_tag": "prev",
+    "previous_event_rule": "absent only for version 1"
+  },
+  "state_kinds": {
+    "30800": {
+      "name": "goal",
+      "statuses": ["draft", "active", "on-hold", "completed", "archived"]
+    },
+    "30801": {
+      "name": "operational_project",
+      "statuses": ["planned", "active", "blocked", "completed", "archived"]
+    },
+    "30802": {
+      "name": "task",
+      "statuses": ["backlog", "to-do", "in-progress", "blocked", "review", "done", "cancelled"]
+    },
+    "30803": {
+      "name": "person",
+      "statuses": [
+        "prospect",
+        "researching",
+        "ready-to-contact",
+        "contacted",
+        "responded",
+        "scheduled",
+        "interviewed",
+        "nurture",
+        "closed",
+        "archived"
+      ]
+    },
+    "30804": {
+      "name": "interview",
+      "statuses": ["idea", "planning", "scheduled", "recorded", "transcribing", "reviewing", "complete", "cancelled"]
+    },
+    "30805": {
+      "name": "content",
+      "statuses": ["idea", "draft", "in-review", "approved", "scheduled", "published", "archived"]
+    },
+    "30806": {
+      "name": "meeting",
+      "statuses": ["planned", "completed", "cancelled"]
+    },
+    "30807": {
+      "name": "decision",
+      "statuses": ["proposed", "decided", "superseded", "archived"]
+    },
+    "30808": {
+      "name": "knowledge",
+      "statuses": ["draft", "verified", "archived"]
+    },
+    "30809": {
+      "name": "approval",
+      "statuses": ["pending", "approved", "rejected", "stale", "cancelled"]
+    }
+  },
+  "operation_kinds": {
+    "48200": {"name": "approval_action", "author": "human"},
+    "48201": {"name": "agent_proposal", "author": "service"},
+    "48202": {"name": "migration_receipt", "author": "migration_service"},
+    "48203": {"name": "generated_summary", "author": "service"},
+    "48204": {"name": "system_activity", "author": "service"},
+    "48205": {"name": "external_communication", "author": "human_or_service_after_approval"}
+  },
+  "authority": {
+    "human_state": "human signature remains authoritative after relay validation",
+    "agent_output": "proposal_or_summary_only",
+    "migration_state": "narrow expiring state_import grant plus atomic receipt",
+    "forbidden_agent_actions": ["approve", "send", "publish", "clear_dnc", "protected_state_write"]
+  }
+}

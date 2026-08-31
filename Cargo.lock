@@ -869,15 +869,20 @@ dependencies = [
  "buzz-db",
  "buzz-deletion",
  "buzz-media",
+ "buzz-migration",
  "buzz-pubsub",
  "buzz-search",
  "buzz-workflow",
+ "buzz-ws-client",
+ "chrono",
  "clap",
  "deadpool-redis",
  "hex",
  "nostr 0.44.7",
  "rustls",
+ "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
  "tokio",
  "tracing",
@@ -1154,6 +1159,18 @@ dependencies = [
  "tokio-util",
  "tracing",
  "ulid",
+ "uuid",
+]
+
+[[package]]
+name = "buzz-migration"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
  "uuid",
 ]
 
@@ -10529,6 +10546,7 @@ dependencies = [
  "getrandom 0.4.3",
  "js-sys",
  "serde_core",
+ "sha1_smol",
  "wasm-bindgen",
 ]
 

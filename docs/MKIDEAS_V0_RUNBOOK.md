@@ -9,8 +9,22 @@ proposals but cannot approve, publish, send, or mutate protected state.
 
 The permanent product navigation is Today, Work, People, Studio, and Team on
 desktop and mobile. Search and capture remain contextual/universal rather than
-additional permanent areas. Work intentionally explains its V1 boundary while
-Today, People, Studio, and Team participate in the V0 workflow.
+additional permanent areas. The original V0 proof focused on Today, People,
+Studio, and Team. The product-first V1 integration now makes Work operational
+and keeps this document as the reproducible guest-to-content proof.
+
+## Current product-first integration
+
+The V1 integration branch extends this V0 path with goals, operational
+projects, tasks, meetings, decisions, typed history and pagination, universal
+Quick Capture, typed cross-product search, immutable private transcript
+descriptors, all five human-gated agent personas, device-grant security seams,
+notification projections, and the complete resumable migration command set.
+
+The locally verified agent set is Guest Researcher, Outreach Drafter,
+Interview Producer, Content / Clip Copilot, and Operations Briefing Assistant.
+Every output remains a proposal or summary. Accepting protected state still
+requires a separate human signature and relay transaction.
 
 ## Implemented V0 path
 
@@ -100,21 +114,26 @@ The fixture transcript is at
 
 ## Acceptance evidence and remaining external gates
 
-The repository contains automated collision/contract tests, a database
-concurrency test, mobile analysis/tests, desktop type/build checks, and a
-focused desktop Playwright flow with deterministic relay events and distinct
-People, Today, Studio, and Team screenshots.
+The repository contains automated collision/contract tests, PostgreSQL
+concurrency and migration tests, mobile analysis/tests, desktop type/build
+checks, and a focused desktop Playwright flow with deterministic relay events
+and distinct Today, Work, People, Studio, Team, Search, transcript, and agent
+screenshots. A local relay-backed Rust acceptance test exercises two human
+identities, a narrowly scoped agent identity, current-head and history
+pagination, live subscriptions, stale-write rejection, agent self-approval
+rejection, and an atomic human approval plus resulting state update.
 
-V0 is not acceptance-complete until the same workflow is run against a real
-private staging relay from a Windows build and an iPhone/TestFlight build with
-two human accounts and managed agent identities. Provisioning that relay,
-issuing releases, and using Apple signing remain separately authorized actions
-under the approved plan.
+The remaining V0 external evidence is the same workflow from an actual iPhone
+or TestFlight build against an approved private staging relay. Provisioning
+that relay, issuing releases, and using Apple signing remain separately
+authorized actions under the approved plan. The local relay and desktop
+evidence do not claim that external Apple gate has passed.
 
-## V1 boundary
+## Remaining production boundary
 
-Android parity, all five operational areas at production depth, three-partner
-replacement, full historical migration, offline conflict UX, notifications,
-device recovery/revocation, backups/restore, production infrastructure, and all
-five agents remain V1 work. External email/calendar/Drive/publishing adapters
-and video rendering remain post-V1.
+Three-partner production acceptance, real Command Center data rehearsal and
+cutoff, advanced offline conflict UX, completed device enrollment/recovery UI,
+real APNs/FCM delivery, backup restoration against provisioned infrastructure,
+signed application artifacts, and production deployment remain externally or
+operationally gated. External email/calendar/Drive/publishing adapters and
+video rendering remain post-V1 and disabled.

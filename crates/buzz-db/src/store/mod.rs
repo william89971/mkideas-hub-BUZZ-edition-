@@ -16,6 +16,8 @@ pub mod channel_members;
 pub mod community;
 /// Durable whole-community deletion lifecycle and PostgreSQL adapter.
 pub mod deletion;
+/// Staged MK Ideas device-bound authentication grants.
+pub mod device_grants;
 /// Direct message channel persistence.
 pub mod dm;
 /// Event storage and retrieval.
@@ -26,6 +28,10 @@ pub mod feed;
 pub mod git_repo;
 /// MK Ideas cross-author authoritative entity heads.
 pub mod mkideas;
+/// Atomic MK Ideas one-time migration receipt persistence.
+pub mod mkideas_migration;
+/// MK Ideas notification preferences and semantic delivery deduplication.
+pub mod mkideas_notifications;
 /// Community moderation: reports, bans/timeouts, audit actions.
 pub mod moderation;
 /// Monthly table partition management.

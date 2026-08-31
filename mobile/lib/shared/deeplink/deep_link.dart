@@ -110,6 +110,126 @@ class MessageDeepLink extends BuzzDeepLink {
       'thread: $threadRootId)';
 }
 
+/// A stable MK Ideas entity coordinate, independent of the signing author.
+///
+/// Canonical form:
+/// `buzz://mkideas/entity?community=<host>&kind=<kind>&d=<uuid>[&event=<id>]`.
+class MkIdeasDeepLink extends BuzzDeepLink {
+  const MkIdeasDeepLink({
+    required this.community,
+    required this.kind,
+    required this.entityId,
+    this.eventId,
+  });
+
+  /// Community host, optionally including a non-default port.
+  final String community;
+
+  /// MK Ideas state event kind in the reserved `30800-30809` range.
+  final int kind;
+
+  /// Stable cross-author `d` UUID.
+  final String entityId;
+
+  /// Optional immutable historical revision event ID.
+  final String? eventId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MkIdeasDeepLink &&
+      other.community == community &&
+      other.kind == kind &&
+      other.entityId == entityId &&
+      other.eventId == eventId;
+
+  @override
+  int get hashCode => Object.hash(community, kind, entityId, eventId);
+
+  @override
+  String toString() =>
+      'MkIdeasDeepLink(community: $community, kind: $kind, d: $entityId, '
+      'event: $eventId)';
+}
+
+/// Builds the canonical shared link for an MK Ideas entity or revision.
+String buildMkIdeasEntityLink({
+  required String community,
+  required int kind,
+  required String entityId,
+  String? eventId,
+}) {
+  final link = MkIdeasDeepLink(
+    community: community.trim().toLowerCase(),
+    kind: kind,
+    entityId: entityId.toLowerCase(),
+    eventId: eventId?.toLowerCase(),
+  );
+  final uri = Uri(
+    scheme: 'buzz',
+    host: 'mkideas',
+    path: '/entity',
+    queryParameters: {
+      'community': link.community,
+      'kind': '${link.kind}',
+      'd': link.entityId,
+      'event': ?link.eventId,
+    },
+  );
+  if (parseMkIdeasDeepLink(uri) != link) {
+    throw ArgumentError('Invalid MK Ideas entity coordinate');
+  }
+  return uri.toString();
+}
+
+/// Parses a canonical MK Ideas entity or historical-revision link.
+MkIdeasDeepLink? parseMkIdeasDeepLink(Uri uri) {
+  if (uri.scheme != 'buzz' ||
+      uri.host != 'mkideas' ||
+      uri.path != '/entity' ||
+      uri.hasFragment ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasPort) {
+    return null;
+  }
+  const allowed = {'community', 'kind', 'd', 'event'};
+  final values = uri.queryParametersAll;
+  if (values.keys.any((key) => !allowed.contains(key)) ||
+      values.values.any((items) => items.length != 1)) {
+    return null;
+  }
+  final community = uri.queryParameters['community']?.trim().toLowerCase();
+  final kind = int.tryParse(uri.queryParameters['kind'] ?? '');
+  final entityId = uri.queryParameters['d']?.toLowerCase();
+  final eventId = uri.queryParameters['event']?.toLowerCase();
+  final communityPattern = RegExp(
+    r'^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?(?::[1-9][0-9]{0,4})?$',
+  );
+  final uuid = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+  );
+  final event = RegExp(r'^[0-9a-f]{64}$');
+  final communityPort = int.tryParse(
+    RegExp(r':([0-9]+)$').firstMatch(community ?? '')?.group(1) ?? '',
+  );
+  if (community == null ||
+      !communityPattern.hasMatch(community) ||
+      (communityPort != null && communityPort > 65535) ||
+      kind == null ||
+      kind < 30800 ||
+      kind > 30809 ||
+      entityId == null ||
+      !uuid.hasMatch(entityId) ||
+      (eventId != null && !event.hasMatch(eventId))) {
+    return null;
+  }
+  return MkIdeasDeepLink(
+    community: community,
+    kind: kind,
+    entityId: entityId,
+    eventId: eventId,
+  );
+}
+
 /// Build a canonical `buzz://message` link for a channel message.
 ///
 /// Mirrors `desktop/src/features/messages/lib/messageLink.ts` so links copied
@@ -294,7 +414,8 @@ InviteDeepLink? parseInviteDeepLink(Uri uri) {
 BuzzDeepLink? parseBuzzDeepLink(Uri uri) =>
     parseInviteDeepLink(uri) ??
     parseChannelDeepLink(uri) ??
-    parseMessageDeepLink(uri);
+    parseMessageDeepLink(uri) ??
+    parseMkIdeasDeepLink(uri);
 
 /// A validated Buzz repository, pull request, or issue permalink.
 class EntityDeepLink extends BuzzDeepLink {

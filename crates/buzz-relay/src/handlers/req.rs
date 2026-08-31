@@ -7,8 +7,9 @@ use tracing::{debug, warn};
 
 use buzz_core::filter::filters_match;
 use buzz_core::kind::{
-    is_unshared_gated_event, AUTHOR_ONLY_KINDS, KIND_AGENT_ENGRAM, KIND_AGENT_TURN_METRIC,
-    KIND_DM_VISIBILITY, P_GATED_KINDS, RESULT_GATED_KINDS, SHARED_GATED_KINDS,
+    is_mkideas_operation_kind, is_mkideas_state_kind, is_unshared_gated_event, AUTHOR_ONLY_KINDS,
+    KIND_AGENT_ENGRAM, KIND_AGENT_TURN_METRIC, KIND_DM_VISIBILITY, P_GATED_KINDS,
+    RESULT_GATED_KINDS, SHARED_GATED_KINDS,
 };
 use buzz_core::tenant::TenantContext;
 use buzz_db::EventQuery;
@@ -911,6 +912,22 @@ fn filters_are_nip43_membership_only(filters: &[Filter]) -> bool {
         })
 }
 
+/// Whether a filter can only match MK Ideas domain events.
+///
+/// MK Ideas events use `#h` for the tenant community identifier, not a Team
+/// channel UUID. Restrict the exception to filters with an explicit, non-empty
+/// kind set entirely inside the reserved MK ranges. Kindless or mixed filters
+/// retain the ordinary fail-closed channel interpretation.
+fn filter_is_mkideas_only(filter: &Filter) -> bool {
+    filter.kinds.as_ref().is_some_and(|kinds| {
+        !kinds.is_empty()
+            && kinds.iter().all(|kind| {
+                let kind = kind.as_u16() as u32;
+                is_mkideas_state_kind(kind) || is_mkideas_operation_kind(kind)
+            })
+    })
+}
+
 /// Extract the single channel UUID from a filter's `#h` tag.
 ///
 /// A multi-value `#h` filter has NIP-01 OR semantics, so it cannot be reduced
@@ -1076,6 +1093,14 @@ pub(crate) fn apply_channel_scope_to_query(
         return;
     }
 
+    // NIP-MK assigns `h` to the host-derived community identifier. The query
+    // already carries an immutable `community_id`, so adding a channel scope
+    // here would turn a value such as `localhost:3000` into match-nothing.
+    if filter_is_mkideas_only(filter) {
+        query.channel_ids = Some(accessible_channels.to_vec());
+        return;
+    }
+
     let h_tag = nostr::SingleLetterTag::lowercase(nostr::Alphabet::H);
     if let Some(values) = filter.generic_tags.get(&h_tag) {
         query.channel_ids = Some(
@@ -1101,6 +1126,9 @@ pub(crate) fn extract_channel_ids_from_filters_limited(
 ) -> Result<Option<Vec<uuid::Uuid>>, ()> {
     let h_tag = nostr::SingleLetterTag::lowercase(nostr::Alphabet::H);
     let value_count = filters.iter().try_fold(0usize, |count, filter| {
+        if filter_is_mkideas_only(filter) {
+            return Ok(count);
+        }
         let additional = filter
             .generic_tags
             .get(&h_tag)
@@ -1121,6 +1149,9 @@ pub(crate) fn extract_channel_ids_from_filters(filters: &[Filter]) -> Option<Vec
     let h_tag = nostr::SingleLetterTag::lowercase(nostr::Alphabet::H);
     let mut channel_ids = Vec::new();
     for filter in filters {
+        if filter_is_mkideas_only(filter) {
+            return None;
+        }
         let values = filter.generic_tags.get(&h_tag)?;
         for value in values {
             if let Ok(channel_id) = value.parse::<uuid::Uuid>() {
@@ -1153,6 +1184,9 @@ async fn release_subscription_topics(
 fn extract_channel_id_from_filters(filters: &[Filter]) -> Option<uuid::Uuid> {
     let mut found_id: Option<uuid::Uuid> = None;
     for f in filters {
+        if filter_is_mkideas_only(f) {
+            return None;
+        }
         let mut filter_has_channel = false;
         for (tag_key, tag_values) in f.generic_tags.iter() {
             let key = tag_key.to_string();
@@ -1717,6 +1751,68 @@ mod tests {
             Some(Vec::new()),
             "malformed-only explicit scope must remain match-nothing, never global",
         );
+    }
+
+    #[test]
+    fn mkideas_community_h_tag_is_not_a_team_channel_scope() {
+        let state_filter: Filter = serde_json::from_value(serde_json::json!({
+            "kinds": [buzz_core::kind::KIND_MK_PERSON],
+            "#h": ["localhost:3000"],
+        }))
+        .expect("parse MK state filter");
+        let operation_filter: Filter = serde_json::from_value(serde_json::json!({
+            "kinds": [buzz_core::kind::KIND_MK_AGENT_PROPOSAL],
+            "#h": ["localhost:3000"],
+        }))
+        .expect("parse MK operation filter");
+
+        assert!(filter_is_mkideas_only(&state_filter));
+        assert!(filter_is_mkideas_only(&operation_filter));
+        assert_eq!(
+            extract_channel_ids_from_filters(std::slice::from_ref(&state_filter)),
+            None,
+        );
+        assert_eq!(
+            extract_channel_id_from_filters(std::slice::from_ref(&state_filter)),
+            None,
+        );
+        assert_eq!(
+            extract_channel_ids_from_filters_limited(std::slice::from_ref(&state_filter)),
+            Ok(None),
+        );
+
+        let accessible = uuid::Uuid::new_v4();
+        let mut query = filter_to_query_params(
+            &state_filter,
+            None,
+            buzz_core::tenant::CommunityId::from_uuid(uuid::Uuid::nil()),
+        );
+        apply_channel_scope_to_query(&mut query, &state_filter, None, &[accessible]);
+        assert_eq!(query.channel_ids, Some(vec![accessible]));
+        assert!(query.channel_ids_include_global);
+    }
+
+    #[test]
+    fn mixed_mkideas_and_team_kinds_keep_fail_closed_channel_semantics() {
+        let mixed: Filter = serde_json::from_value(serde_json::json!({
+            "kinds": [buzz_core::kind::KIND_MK_PERSON, 40002],
+            "#h": ["localhost:3000"],
+        }))
+        .expect("parse mixed filter");
+
+        assert!(!filter_is_mkideas_only(&mixed));
+        assert_eq!(
+            extract_channel_ids_from_filters(std::slice::from_ref(&mixed)),
+            Some(Vec::new()),
+        );
+        let mut query = filter_to_query_params(
+            &mixed,
+            None,
+            buzz_core::tenant::CommunityId::from_uuid(uuid::Uuid::nil()),
+        );
+        apply_channel_scope_to_query(&mut query, &mixed, None, &[uuid::Uuid::new_v4()]);
+        assert_eq!(query.channel_ids, Some(Vec::new()));
+        assert!(!query.channel_ids_include_global);
     }
 
     #[test]

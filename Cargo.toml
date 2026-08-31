@@ -15,6 +15,7 @@ members = [
     "crates/buzz-test-client",
     "crates/buzz-ws-client",
     "crates/buzz-admin",
+    "crates/buzz-migration",
     "crates/buzz-deletion",
     "crates/buzz-workflow",
     "crates/buzz-media",
@@ -97,7 +98,7 @@ thiserror = "2"
 anyhow    = "1"
 
 # Utilities
-uuid    = { version = "1", features = ["v4", "serde"] }
+uuid    = { version = "1", features = ["v4", "v5", "serde"] }
 chrono  = { version = "0.4", features = ["serde"] }
 
 # JWT / JWS verification (NIP-FI federated identity assertions)
@@ -146,6 +147,7 @@ buzz-search = { path = "crates/buzz-search" }
 buzz-audit = { path = "crates/buzz-audit" }
 buzz-workflow = { path = "crates/buzz-workflow" }
 buzz-media = { path = "crates/buzz-media" }
+buzz-migration = { path = "crates/buzz-migration" }
 buzz-sdk = { path = "crates/buzz-sdk" }
 buzz-ws-client = { path = "crates/buzz-ws-client" }
 buzz-relay-mesh = { path = "crates/buzz-relay-mesh" }

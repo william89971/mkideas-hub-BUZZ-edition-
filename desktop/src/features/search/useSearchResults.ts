@@ -28,25 +28,16 @@ import {
   parseSearchOperators,
   type OperatorResolveResult,
 } from "@/features/search/lib/parseSearchOperators";
+import {
+  parseMkIdeasSearchHit,
+  projectCurrentMkIdeasSearchHits,
+} from "@/features/search/lib/mkIdeasSearch";
 import type { SearchResult } from "@/features/search/ui/SearchResultItem";
-import type { Channel, SearchHit, UserSearchResult } from "@/shared/api/types";
+import type { Channel, UserSearchResult } from "@/shared/api/types";
 import { normalizePubkey } from "@/shared/lib/pubkey";
 
 function formatUserResultName(user: UserSearchResult) {
   return user.displayName?.trim() || user.nip05Handle?.trim() || user.pubkey;
-}
-
-function dedupeSearchHits(hits: SearchHit[]) {
-  const seenEventIds = new Set<string>();
-
-  return hits.filter((hit) => {
-    if (seenEventIds.has(hit.eventId)) {
-      return false;
-    }
-
-    seenEventIds.add(hit.eventId);
-    return true;
-  });
 }
 
 function resolveChannelIdFromOperator(
@@ -260,7 +251,7 @@ export function useSearchResults({
     if (hasUnresolvedOperator) {
       return [];
     }
-    return dedupeSearchHits(searchQuery.data?.hits ?? []);
+    return projectCurrentMkIdeasSearchHits(searchQuery.data?.hits ?? []);
   }, [hasUnresolvedOperator, searchQuery.data?.hits]);
   const channelResults = React.useMemo(() => {
     if (scopeChannelId || ftsQuery.length < MIN_SEARCH_QUERY_LENGTH) {
@@ -442,10 +433,12 @@ export function useSearchResults({
         kind: "user" as const,
         user,
       })),
-      ...messageResults.map((hit) => ({
-        kind: "message" as const,
-        hit,
-      })),
+      ...messageResults.map((hit) => {
+        const presentation = parseMkIdeasSearchHit(hit);
+        return presentation
+          ? ({ kind: "mkideas" as const, hit, presentation } as const)
+          : ({ kind: "message" as const, hit } as const);
+      }),
     ],
     [channelResults, messageResults, userResults],
   );

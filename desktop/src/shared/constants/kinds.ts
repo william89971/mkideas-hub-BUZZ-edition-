@@ -47,6 +47,7 @@ export const KIND_MK_AGENT_PROPOSAL = 48201;
 export const KIND_MK_MIGRATION_RECEIPT = 48202;
 export const KIND_MK_GENERATED_SUMMARY = 48203;
 export const KIND_MK_SYSTEM_ACTIVITY = 48204;
+export const KIND_MK_EXTERNAL_COMMUNICATION = 48205;
 // NIP-78 application-specific data. All use kind 30078; the relay
 // differentiates them by d-tag ("read-state:<slotId>", "channel-sections",
 // "channel-mutes", "channel-stars", "channel-sort", "project-sidebar-membership").

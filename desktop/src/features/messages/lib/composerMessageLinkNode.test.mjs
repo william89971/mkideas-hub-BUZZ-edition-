@@ -30,6 +30,8 @@ const ISSUE_ID = "b".repeat(64);
 const ISSUE_HREF = `buzz://issue?id=${ISSUE_ID}&owner=${OWNER}&d=buzz-world`;
 const PR_ID = "c".repeat(64);
 const PR_HREF = `buzz://pr?id=${PR_ID}&owner=${OWNER}&d=buzz-world`;
+const MK_ID = "11111111-1111-4111-8111-111111111111";
+const MK_HREF = `buzz://mkideas/entity?community=relay.mkideas.org&kind=30802&d=${MK_ID}`;
 
 test("resolves a composer preview and canonicalizes the underlying href", () => {
   assert.deepEqual(
@@ -75,6 +77,10 @@ test("resolves channel and entity links as composer chips", () => {
     resolveComposerMessageLinkAttributes(ISSUE_HREF, () => undefined),
     { channelName: "", href: ISSUE_HREF },
   );
+  assert.deepEqual(
+    resolveComposerMessageLinkAttributes(MK_HREF, () => undefined),
+    { channelName: "", href: MK_HREF },
+  );
 });
 
 const resolveKnownChannel = (channelId) =>
@@ -101,6 +107,7 @@ const EXACT_LINK_PASTE_ACCEPTED_CASES = [
   ["project", PROJECT_HREF, PROJECT_HREF],
   ["pull request", PR_HREF, PR_HREF],
   ["issue", ISSUE_HREF, ISSUE_HREF],
+  ["MK Ideas task", MK_HREF, MK_HREF],
 ];
 
 for (const [label, input, expectedHref] of EXACT_LINK_PASTE_ACCEPTED_CASES) {

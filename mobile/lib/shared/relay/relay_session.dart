@@ -23,6 +23,7 @@ import 'relay_socket.dart';
 export 'relay_session_types.dart';
 
 part 'relay_session_auth.dart';
+part 'relay_session_query.dart';
 
 class _HistorySubscription {
   final List<NostrEvent> events = [];
@@ -97,6 +98,8 @@ class RelaySessionNotifier extends Notifier<SessionState> {
   final RelayTimerFactory _retryTimerFactory;
   final Future<void> Function(Duration) _replayDelay;
 
+  RelayConfig get _activeRelayConfig => ref.read(relayConfigProvider);
+
   static const _baseReconnectDelayMs = 1000;
   static const _maxReconnectDelayMs = 30000;
   static const _eventBatchMs = 16;
@@ -153,49 +156,13 @@ class RelaySessionNotifier extends Notifier<SessionState> {
   Future<List<NostrEvent>> queryRelay(
     List<NostrFilter> filters, {
     Duration timeout = const Duration(seconds: 8),
-  }) async {
-    final config = ref.read(relayConfigProvider);
-    final url = Uri.parse(config.baseUrl).resolve('/query').toString();
-    final bodyBytes = utf8.encode(
-      jsonEncode(filters.map((filter) => filter.toJson()).toList()),
-    );
-    // Reuse the session transport on success. A timeout rotates immediately
-    // for new queries, then closes the retired client after its peers finish.
-    final response = await _httpQueryClient.post(
-      Uri.parse(url),
-      headers: {
-        'Authorization': buildNip98AuthHeader(
-          method: 'POST',
-          url: url,
-          bodyBytes: bodyBytes,
-          nsec: config.nsec,
-        ),
-        'Content-Type': 'application/json',
-      },
-      body: bodyBytes,
-      timeout: timeout,
-    );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      _activateRateLimitGateFromHttpError(response.body);
-      throw RelayException(response.statusCode, response.body);
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! List) {
-      throw const FormatException('relay returned malformed query response');
-    }
-    try {
-      return [
-        for (final eventJson in decoded)
-          if (eventJson is Map<String, dynamic>)
-            NostrEvent.fromJson(eventJson)
-          else
-            throw const FormatException('relay returned malformed query event'),
-      ];
-    } catch (error) {
-      if (error is FormatException) rethrow;
-      throw FormatException('relay returned malformed query event: $error');
-    }
-  }
+  }) => _queryRelayEvents(this, filters, timeout: timeout);
+
+  /// Execute one cursor-bearing MK Ideas projection query through `/query`.
+  Future<RelayQueryPage> queryRelayPage(
+    NostrFilter filter, {
+    Duration timeout = const Duration(seconds: 8),
+  }) => _queryRelayPage(this, filter, timeout: timeout);
 
   void _activateRateLimitGateFromHttpError(String body) {
     final dynamic decoded;

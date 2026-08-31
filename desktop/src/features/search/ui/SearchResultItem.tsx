@@ -2,10 +2,12 @@ import type * as React from "react";
 import {
   ArrowRight,
   Bot,
+  BriefcaseBusiness,
   FileText,
   Hash,
   MessageCircle,
   Plus,
+  Radio,
   User,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +21,7 @@ import {
 import type { Channel, SearchHit, UserSearchResult } from "@/shared/api/types";
 import { Badge } from "@/shared/ui/badge";
 import { UserAvatar } from "@/shared/ui/UserAvatar";
+import type { MkIdeasSearchPresentation } from "@/features/search/lib/mkIdeasSearch";
 
 export type SearchResult =
   | {
@@ -31,6 +34,11 @@ export type SearchResult =
     }
   | { kind: "channel"; channel: Channel }
   | { kind: "user"; user: UserSearchResult }
+  | {
+      kind: "mkideas";
+      hit: SearchHit;
+      presentation: MkIdeasSearchPresentation;
+    }
   | { kind: "message"; hit: SearchHit };
 
 export function resultKey(result: SearchResult) {
@@ -44,6 +52,10 @@ export function resultKey(result: SearchResult) {
 
   if (result.kind === "user") {
     return `user-${result.user.pubkey}`;
+  }
+
+  if (result.kind === "mkideas") {
+    return `mkideas-${result.hit.eventId}`;
   }
 
   return `message-${result.hit.eventId}`;
@@ -62,6 +74,10 @@ export function resultTestId(result: SearchResult) {
     return `search-result-user-${result.user.pubkey}`;
   }
 
+  if (result.kind === "mkideas") {
+    return `search-result-mkideas-${result.hit.eventId}`;
+  }
+
   return `search-result-${result.hit.eventId}`;
 }
 
@@ -78,6 +94,16 @@ export function resultIcon(
 
   if (result.kind === "user") {
     return result.user.isAgent ? Bot : User;
+  }
+
+  if (result.kind === "mkideas") {
+    return result.presentation.area === "work"
+      ? BriefcaseBusiness
+      : result.presentation.area === "people"
+        ? User
+        : result.presentation.area === "studio"
+          ? Radio
+          : FileText;
   }
 
   const channelType =

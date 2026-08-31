@@ -79,6 +79,17 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
 
     let relay_url =
         crate::api::bridge::nip42_expected_relay_url(&state.config.relay_url, &conn.tenant);
+    let device_claim =
+        if state.config.mk_device_grants.mode == crate::device_security::DeviceGrantMode::Off {
+            Ok(None)
+        } else {
+            crate::device_security::extract_device_session_claim(
+                &event,
+                &conn.tenant,
+                &challenge,
+                &relay_url,
+            )
+        };
     let auth_svc = Arc::clone(&state.auth);
 
     metrics::counter!("buzz_auth_attempts_total", "method" => "nip42").increment(1);
@@ -254,6 +265,7 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
 
             // Stash NIP-OA owner on the auth context only after the shared
             // backfill confirms the first-write-wins relationship.
+            let owner_delegated_agent = nip_oa_owner.is_some();
             if let Some(owner) = nip_oa_owner {
                 if crate::api::relay_members::materialize_nip_oa_owner(
                     &state,
@@ -272,6 +284,48 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
                         "NIP-OA owner could not be materialized"
                     );
                 }
+            }
+
+            // Device grants apply to direct human sessions. NIP-OA agents are
+            // separately bounded by their owner/service capabilities and do
+            // not represent a physical user device.
+            let device_decision = if owner_delegated_agent {
+                crate::device_security::DeviceAuthDecision::Bypassed
+            } else {
+                crate::device_security::evaluate_device_auth(
+                    &state.db,
+                    state.config.mk_device_grants,
+                    conn.tenant.community(),
+                    pubkey.as_bytes(),
+                    device_claim,
+                )
+                .await
+            };
+            match device_decision {
+                crate::device_security::DeviceAuthDecision::Denied(reason) => {
+                    warn!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), reason, "device grant denied authentication");
+                    metrics::counter!("buzz_auth_failures_total", "reason" => "device_grant")
+                        .increment(1);
+                    *conn.auth_state.write().await = AuthState::Failed;
+                    let _ = conn.ctrl_tx.try_send(WsMessage::Text(
+                        RelayMessage::ok(
+                            &event_id_hex,
+                            false,
+                            "auth-required: device grant rejected",
+                        )
+                        .into(),
+                    ));
+                    conn.cancel.cancel();
+                    return;
+                }
+                crate::device_security::DeviceAuthDecision::AuditAllowed => {
+                    metrics::counter!("buzz_device_grant_audit_misses_total").increment(1);
+                    warn!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), "device grant audit allowed an unenrolled session");
+                }
+                crate::device_security::DeviceAuthDecision::Active(_) => {
+                    metrics::counter!("buzz_device_grant_auth_total").increment(1);
+                }
+                crate::device_security::DeviceAuthDecision::Bypassed => {}
             }
 
             info!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), "NIP-42 auth successful");

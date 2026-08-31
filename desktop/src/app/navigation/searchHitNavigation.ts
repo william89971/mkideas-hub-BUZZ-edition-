@@ -1,7 +1,9 @@
 import { resolveSearchHitDestination } from "@/app/navigation/resolveSearchHitDestination";
 import { createSearchHighlightNavigation } from "@/app/navigation/searchHighlightNavigation";
 import { cacheSearchHitEvent } from "@/app/navigation/searchHitEventCache";
+import { mkIdeasSearchArea } from "@/features/search/lib/mkIdeasSearch";
 import type { SearchHit } from "@/shared/api/types";
+import type { MkIdeasArea } from "@/shared/lib/entityLink";
 
 type SearchHitNavigationActions = {
   force?: boolean;
@@ -24,6 +26,10 @@ type SearchHitNavigationActions = {
       searchHighlight?: ReturnType<typeof createSearchHighlightNavigation>;
     },
   ) => Promise<unknown>;
+  goMkIdeasArea?: (
+    area: MkIdeasArea,
+    options?: { force?: boolean },
+  ) => Promise<unknown>;
   signal?: AbortSignal;
 };
 
@@ -34,6 +40,11 @@ export async function openSearchHitWithNavigation(
 ): Promise<unknown> {
   if (actions.signal?.aborted) {
     return false;
+  }
+
+  const mkIdeasArea = mkIdeasSearchArea(hit);
+  if (mkIdeasArea && actions.goMkIdeasArea) {
+    return actions.goMkIdeasArea(mkIdeasArea, { force: actions.force });
   }
 
   const isLifecycleBound = Boolean(actions.signal);

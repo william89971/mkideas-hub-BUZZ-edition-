@@ -479,18 +479,75 @@ async fn validate_mkideas_event(
             ));
         }
     } else {
-        let is_managed_agent = state
-            .db
-            .get_agent_channel_policy(tenant.community(), event.pubkey.as_bytes())
-            .await
-            .map_err(|error| {
-                IngestError::Internal(format!("error: loading MK Ideas agent identity: {error}"))
-            })?
-            .is_some_and(|(_, owner)| owner.is_some());
-        if !is_managed_agent {
-            return Err(IngestError::AuthFailed(
-                "restricted: MK Ideas service events require a managed agent identity".into(),
-            ));
+        let content = serde_json::from_str::<serde_json::Value>(&event.content)
+            .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+        let schema_version = content
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(1);
+        if kind == buzz_core::kind::KIND_MK_EXTERNAL_COMMUNICATION
+            && human_role
+                .as_deref()
+                .is_some_and(|role| matches!(role, "owner" | "admin"))
+        {
+            // Human-authored delivery/history evidence remains human-signed.
+        } else if schema_version == 1 {
+            // Rolling compatibility for already-created V0 fixture agents.
+            let is_managed_agent = state
+                .db
+                .get_agent_channel_policy(tenant.community(), event.pubkey.as_bytes())
+                .await
+                .map_err(|error| {
+                    IngestError::Internal(format!(
+                        "error: loading MK Ideas agent identity: {error}"
+                    ))
+                })?
+                .is_some_and(|(_, owner)| owner.is_some());
+            if !is_managed_agent {
+                return Err(IngestError::AuthFailed(
+                    "restricted: legacy MK Ideas service events require a managed agent identity"
+                        .into(),
+                ));
+            }
+        } else {
+            let persona = content
+                .get("persona")
+                .or_else(|| content.get("agent"))
+                .and_then(serde_json::Value::as_str);
+            let target_kind = content
+                .get("target_kind")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok());
+            let dataset_sha256 = content
+                .get("dataset_sha256")
+                .and_then(serde_json::Value::as_str);
+            let purpose = if kind == buzz_core::kind::KIND_MK_MIGRATION_RECEIPT {
+                "migration"
+            } else if kind == buzz_core::kind::KIND_MK_SYSTEM_ACTIVITY && persona.is_none() {
+                "maintenance"
+            } else {
+                "agent"
+            };
+            let allowed = state
+                .db
+                .mkideas_service_grant_allows(
+                    tenant.community(),
+                    event.pubkey.as_bytes(),
+                    purpose,
+                    persona,
+                    kind,
+                    target_kind,
+                    dataset_sha256,
+                )
+                .await
+                .map_err(|error| {
+                    IngestError::Internal(format!("error: checking MK service grant: {error}"))
+                })?;
+            if !allowed {
+                return Err(IngestError::AuthFailed(
+                    "restricted: no active MK Ideas service capability permits this event".into(),
+                ));
+            }
         }
     }
 
@@ -503,7 +560,19 @@ async fn validate_mkideas_event(
     if kind == KIND_MK_APPROVAL_ACTION {
         buzz_core::mkideas::validate_approval_action(event)
             .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
-        validate_mkideas_approval_action_links(tenant, state, event).await?;
+        let schema_version = serde_json::from_str::<serde_json::Value>(&event.content)
+            .ok()
+            .and_then(|content| {
+                content
+                    .get("schema_version")
+                    .and_then(serde_json::Value::as_u64)
+            });
+        // V2 performs every exact-target check while holding the approval and
+        // target locks in apply_mkideas_approval_action. Keep the legacy read
+        // validation only for schema-v1 actions.
+        if schema_version == Some(1) {
+            validate_mkideas_approval_action_links(tenant, state, event).await?;
+        }
         return Ok(None);
     }
     if kind == KIND_MK_AGENT_PROPOSAL {
@@ -512,20 +581,46 @@ async fn validate_mkideas_event(
         validate_mkideas_proposal_target(tenant, state, event).await?;
         return Ok(None);
     }
+    if kind == KIND_MK_MIGRATION_RECEIPT {
+        let schema_version = serde_json::from_str::<serde_json::Value>(&event.content)
+            .ok()
+            .and_then(|content| {
+                content
+                    .get("schema_version")
+                    .and_then(serde_json::Value::as_u64)
+            });
+        if schema_version == Some(2) {
+            buzz_core::mkideas_migration::validate_migration_receipt(event)
+                .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+            return Ok(None);
+        }
+    }
     match kind {
         KIND_MK_MIGRATION_RECEIPT | KIND_MK_GENERATED_SUMMARY | KIND_MK_SYSTEM_ACTIVITY => {
             let content: serde_json::Value =
                 serde_json::from_str(&event.content).map_err(|error| {
                     IngestError::Rejected(format!("invalid: MK Ideas system payload: {error}"))
                 })?;
-            if !content.is_object()
-                || content
-                    .get("schema_version")
-                    .and_then(serde_json::Value::as_u64)
-                    != Some(1)
+            let schema_version = content
+                .get("schema_version")
+                .and_then(serde_json::Value::as_u64);
+            if schema_version == Some(2)
+                && (kind == KIND_MK_GENERATED_SUMMARY
+                    || content.get("persona_id").is_some()
+                    || content.get("persona").is_some())
+            {
+                buzz_core::mkideas::validate_agent_service_event(event)
+                    .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+            } else if !content.is_object()
+                || !matches!(schema_version, Some(1 | 2))
+                || (schema_version == Some(2)
+                    && content
+                        .get("activity_type")
+                        .and_then(serde_json::Value::as_str)
+                        .is_none())
             {
                 return Err(IngestError::Rejected(
-                    "invalid: MK Ideas system payload must be a schema-version-1 object".into(),
+                    "invalid: MK Ideas system payload must be a supported typed object".into(),
                 ));
             }
             Ok(())
@@ -545,19 +640,11 @@ async fn validate_mkideas_proposal_target(
 ) -> Result<(), IngestError> {
     let content: serde_json::Value = serde_json::from_str(&event.content)
         .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
-    let target_id = content
-        .get("target_id")
-        .and_then(serde_json::Value::as_str)
-        .and_then(|value| Uuid::parse_str(value).ok())
-        .ok_or_else(|| IngestError::Rejected("invalid: `target_id` must be a UUID".into()))?;
-    let target_kind = content
-        .get("target_kind")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .ok_or_else(|| IngestError::Rejected("invalid: `target_kind` must be an integer".into()))?;
+    let target = buzz_core::mkideas::parse_agent_proposal_target(&content)
+        .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
     let exists = state
         .db
-        .get_mkideas_entity_head(tenant.community(), target_kind, target_id)
+        .get_mkideas_entity_head(tenant.community(), target.kind, target.entity_id)
         .await
         .map_err(|error| {
             IngestError::Internal(format!("error: loading MK Ideas proposal target: {error}"))
@@ -683,7 +770,30 @@ async fn validate_mkideas_links(
                 .ok_or_else(|| {
                     IngestError::Rejected("invalid: `target_kind` must be an integer".into())
                 })?;
-            require_head(target_kind, target_id).await?;
+            let target = require_head(target_kind, target_id).await?;
+            let target_event_id = content
+                .get("target_event_id")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    IngestError::Rejected("invalid: `target_event_id` is required".into())
+                })?;
+            let target_version = content
+                .get("target_version")
+                .and_then(serde_json::Value::as_i64)
+                .ok_or_else(|| {
+                    IngestError::Rejected("invalid: `target_version` is required".into())
+                })?;
+            let current_target_version =
+                serde_json::from_str::<serde_json::Value>(&target.event.content)
+                    .ok()
+                    .and_then(|value| value.get("version").and_then(serde_json::Value::as_i64));
+            if target.event.id.to_hex() != target_event_id
+                || current_target_version != Some(target_version)
+            {
+                return Err(IngestError::Rejected(
+                    "invalid: approval target is stale".into(),
+                ));
+            }
 
             let proposal_event_id = content
                 .get("proposal_event_id")
@@ -714,10 +824,20 @@ async fn validate_mkideas_links(
                 .map_err(|error| {
                     IngestError::Internal(format!("error: parsing MK Ideas proposal: {error}"))
                 })?;
+            let proposal_target =
+                buzz_core::mkideas::parse_agent_proposal_target(&proposal_content)
+                    .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
             let proposal_matches = proposal_content.get("proposal_id")
                 == content.get("proposal_id")
-                && proposal_content.get("target_id") == content.get("target_id")
-                && proposal_content.get("target_kind") == content.get("target_kind")
+                && proposal_target.entity_id == target_id
+                && proposal_target.kind == target_kind
+                && proposal_target
+                    .event_id
+                    .as_ref()
+                    .map(hex::encode)
+                    .as_deref()
+                    == Some(target_event_id)
+                && proposal_target.version == Some(target_version)
                 && proposal_content
                     .get("status")
                     .and_then(serde_json::Value::as_str)
@@ -3439,6 +3559,26 @@ async fn ingest_event_inner(
         });
     }
 
+    let mut approval_result_event: Option<buzz_core::StoredEvent> = None;
+    let mut migration_import_event: Option<buzz_core::StoredEvent> = None;
+    let is_v2_approval_action = kind_u32 == KIND_MK_APPROVAL_ACTION
+        && serde_json::from_str::<serde_json::Value>(&event.content)
+            .ok()
+            .and_then(|content| {
+                content
+                    .get("schema_version")
+                    .and_then(serde_json::Value::as_u64)
+            })
+            == Some(2);
+    let is_v2_migration_receipt = kind_u32 == KIND_MK_MIGRATION_RECEIPT
+        && serde_json::from_str::<serde_json::Value>(&event.content)
+            .ok()
+            .and_then(|content| {
+                content
+                    .get("schema_version")
+                    .and_then(serde_json::Value::as_u64)
+            })
+            == Some(2);
     let (stored_event, was_inserted) = if let Some(envelope) = mkideas_state.as_ref() {
         state
             .db
@@ -3457,6 +3597,45 @@ async fn ingest_event_inner(
                 }
                 other => IngestError::Internal(format!("error: {other}")),
             })?
+    } else if is_v2_approval_action {
+        let (stored, result, inserted) = state
+            .db
+            .apply_mkideas_approval_action(tenant.community(), &event)
+            .await
+            .map_err(|error| match error {
+                buzz_db::DbError::MkIdeasConflict {
+                    current_version,
+                    current_event_id,
+                } => IngestError::Rejected(format!(
+                    "conflict: MK Ideas approval is already decided at version {current_version} ({})",
+                    current_event_id.as_deref().unwrap_or("unknown action")
+                )),
+                buzz_db::DbError::MkIdeasValidation(reason) => {
+                    IngestError::Rejected(format!("invalid: {reason}"))
+                }
+                other => IngestError::Internal(format!("error: {other}")),
+            })?;
+        approval_result_event = result;
+        (stored, inserted)
+    } else if is_v2_migration_receipt {
+        let envelope = buzz_core::mkideas_migration::validate_migration_receipt(&event)
+            .map_err(|error| IngestError::Rejected(format!("invalid: {error}")))?;
+        let result = state
+            .db
+            .apply_mkideas_migration_item(tenant.community(), &event, &envelope)
+            .await
+            .map_err(|error| match error {
+                buzz_db::DbError::AccessDenied(reason) => {
+                    IngestError::AuthFailed(format!("restricted: {reason}"))
+                }
+                buzz_db::DbError::MkIdeasConflict { .. }
+                | buzz_db::DbError::MkIdeasValidation(_) => {
+                    IngestError::Rejected(format!("invalid: {error}"))
+                }
+                other => IngestError::Internal(format!("error: {other}")),
+            })?;
+        migration_import_event = Some(result.imported);
+        (result.receipt, result.inserted)
     } else if buzz_core::kind::is_replaceable(kind_u32) {
         // NIP-16 replaceable event — atomic replace with stale-write protection.
         // channel_id is None for global kinds (0, 1, 3) due to step 5b above.
@@ -3591,6 +3770,28 @@ async fn ingest_event_inner(
         threaded_visibility.clone(),
     )
     .await;
+    if let Some(result) = approval_result_event.as_ref() {
+        dispatch_persistent_event(
+            tenant,
+            state,
+            result,
+            event_kind_u32(&result.event),
+            &pubkey_hex,
+            None,
+        )
+        .await;
+    }
+    if let Some(imported) = migration_import_event.as_ref() {
+        dispatch_persistent_event(
+            tenant,
+            state,
+            imported,
+            event_kind_u32(&imported.event),
+            &pubkey_hex,
+            None,
+        )
+        .await;
+    }
 
     info!(event_id = %event_id_hex, kind = kind_u32, "Event ingested via pipeline");
 

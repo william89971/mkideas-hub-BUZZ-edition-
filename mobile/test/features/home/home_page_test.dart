@@ -1,5 +1,5 @@
 import 'package:buzz/features/home/home_page.dart';
-import 'package:buzz/features/channels/channels_page.dart';
+import 'package:buzz/features/mkideas/mk_quick_capture_launcher.dart';
 import 'package:buzz/features/profile/profile_avatar.dart';
 import 'package:buzz/shared/theme/theme.dart';
 import 'package:flutter/material.dart';
@@ -34,45 +34,37 @@ void main() {
     );
   }
 
-  testWidgets('shows icon-only navigation and an aligned quick action', (
+  testWidgets('shows the five-area navigation and aligned Quick Capture', (
     tester,
   ) async {
     await tester.pumpWidget(await buildHome());
     await tester.pump();
 
-    expect(find.text('Home'), findsNothing);
-    expect(find.text('Activity'), findsNothing);
-    expect(find.text('Search'), findsNothing);
-    expect(find.bySemanticsLabel('Home'), findsOneWidget);
-    expect(find.bySemanticsLabel('Activity'), findsOneWidget);
-    expect(find.bySemanticsLabel('Search'), findsOneWidget);
+    expect(find.byTooltip('Today'), findsOneWidget);
+    expect(find.byTooltip('Work'), findsOneWidget);
+    expect(find.byTooltip('People'), findsOneWidget);
+    expect(find.byTooltip('Studio'), findsOneWidget);
+    expect(find.byTooltip('Team'), findsOneWidget);
 
-    final quickAction = find.byTooltip('Create or start conversation');
+    final quickAction = find.byTooltip('Quick Capture');
     expect(quickAction, findsOneWidget);
-    final launcherSize = tester.getSize(
-      find.byType(ChannelQuickActionsLauncher),
-    );
+    final launcherSize = tester.getSize(find.byType(MkQuickCaptureLauncher));
     expect(launcherSize.width, 800);
     expect(launcherSize.height, greaterThan(0));
-    final motionRect = tester.getRect(
-      find.byKey(const Key('channel-quick-actions-motion')),
-    );
-    expect(motionRect.width, const Size.square(56).width);
-    expect(motionRect.left, greaterThanOrEqualTo(0));
     expect(tester.getSize(quickAction), const Size.square(56));
     final quickActionRect = tester.getRect(quickAction);
     expect(quickActionRect.left, greaterThanOrEqualTo(0));
     expect(quickActionRect.top, greaterThanOrEqualTo(0));
     expect(quickActionRect.right, lessThanOrEqualTo(800));
     expect(quickActionRect.bottom, lessThanOrEqualTo(600));
-    final homeDestinationRect = tester.getRect(find.bySemanticsLabel('Home'));
+    final homeDestinationRect = tester.getRect(find.byTooltip('Today'));
     expect(
       quickActionRect.center.dy,
       closeTo(homeDestinationRect.center.dy, 0.01),
     );
   });
 
-  testWidgets('keeps the Buzz backdrop behind the scalable Home screen', (
+  testWidgets('keeps the Buzz backdrop behind the scalable Team screen', (
     tester,
   ) async {
     const gradient = LinearGradient(
@@ -81,7 +73,9 @@ void main() {
       colors: [Colors.yellow, Colors.blue],
     );
     await tester.pumpWidget(await buildHome(topSectionGradient: gradient));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Team'));
+    await tester.pumpAndSettle();
 
     final backdrop = find.byKey(
       const ValueKey('home-settings-transition-backdrop'),
@@ -118,6 +112,8 @@ void main() {
     await tester.pumpWidget(await buildHome());
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byTooltip('Team'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(ProfileAvatar));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 95));
@@ -158,6 +154,8 @@ void main() {
         .transform
         .storage[0];
 
+    await tester.tap(find.byTooltip('Team'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(ProfileAvatar));
     await tester.pump();
 
@@ -215,25 +213,25 @@ void main() {
     await tester.pumpWidget(await buildHome());
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Home'));
+    await tester.tap(find.byTooltip('Today'));
     await tester.pump();
     expect(hapticCalls, isEmpty);
 
-    await tester.tap(find.byTooltip('Activity'));
+    await tester.tap(find.byTooltip('Work'));
     await tester.pump();
     expect(hapticCalls, hasLength(1));
     expect(hapticCalls.single.arguments, 'HapticFeedbackType.selectionClick');
 
-    await tester.tap(find.byTooltip('Activity'));
+    await tester.tap(find.byTooltip('Work'));
     await tester.pump();
     expect(hapticCalls, hasLength(1));
 
-    await tester.tap(find.byTooltip('Search'));
+    await tester.tap(find.byTooltip('People'));
     await tester.pump();
     expect(hapticCalls, hasLength(2));
   });
 
-  testWidgets('gives a light impact when the Home quick action is pressed', (
+  testWidgets('gives a light impact when universal Quick Capture is pressed', (
     tester,
   ) async {
     final hapticCalls = <MethodCall>[];
@@ -252,14 +250,14 @@ void main() {
     await tester.pumpWidget(await buildHome());
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Create or start conversation'));
+    await tester.tap(find.byTooltip('Quick Capture'));
     await tester.pump();
 
     expect(hapticCalls, hasLength(1));
     expect(hapticCalls.single.arguments, 'HapticFeedbackType.lightImpact');
   });
 
-  testWidgets('badges the Inbox tab when it has unread rows', (tester) async {
+  testWidgets('badges the Team tab when it has unread rows', (tester) async {
     await tester.pumpWidget(await buildHome(unreadInboxCount: 1));
     await tester.pump();
 
@@ -272,7 +270,7 @@ void main() {
     );
     expect(badge.constraints?.maxWidth, 12);
     expect(badge.constraints?.maxHeight, 12);
-    expect(find.bySemanticsLabel('Activity, unread'), findsOneWidget);
+    expect(find.byTooltip('Team'), findsOneWidget);
     AnimatedScale unreadDotScale() => tester.widget<AnimatedScale>(
       find.byKey(const ValueKey('activity-tab-unread-dot-scale')),
     );
@@ -280,7 +278,7 @@ void main() {
     expect(unreadDotScale().alignment, const Alignment(-0.5, 0.5));
     expect(unreadDotScale().duration, const Duration(milliseconds: 220));
 
-    await tester.tap(find.byTooltip('Activity'));
+    await tester.tap(find.byTooltip('Team'));
     await tester.pump();
 
     expect(
@@ -288,9 +286,9 @@ void main() {
       findsOneWidget,
     );
     expect(unreadDotScale().scale, 0);
-    expect(find.bySemanticsLabel('Activity, unread'), findsNothing);
+    expect(find.byTooltip('Team'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Home'));
+    await tester.tap(find.byTooltip('Today'));
     await tester.pump();
 
     expect(unreadDotScale().scale, 1);
@@ -302,66 +300,38 @@ void main() {
     await tester.pumpWidget(await buildHome());
     await tester.pump();
 
-    Transform bodyTransform() => tester.widget<Transform>(
-      find.byKey(const ValueKey('frosted-scaffold-body-transition-transform')),
+    Transform areaTransform() => tester.widget<Transform>(
+      find.byKey(const ValueKey('mk-area-tab-transition-transform')),
     );
-    Opacity bodyOpacity() => tester.widget<Opacity>(
-      find.byKey(const ValueKey('frosted-scaffold-body-transition-opacity')),
+    Opacity areaOpacity() => tester.widget<Opacity>(
+      find.byKey(const ValueKey('mk-area-tab-transition-opacity')),
     );
-    Transform appBarTransform() => tester.widget<Transform>(
-      find.byKey(
-        const ValueKey('frosted-app-bar-content-transition-transform'),
-      ),
-    );
-    Opacity appBarOpacity() => tester.widget<Opacity>(
-      find.byKey(const ValueKey('frosted-app-bar-content-transition-opacity')),
-    );
-    double bodyOffset() => bodyTransform().transform.getTranslation().x;
-    double appBarOffset() => appBarTransform().transform.getTranslation().x;
+    double areaOffset() => areaTransform().transform.getTranslation().x;
 
-    expect(bodyOffset(), closeTo(0, 0.001));
-    expect(appBarOffset(), closeTo(0, 0.001));
-    expect(bodyOpacity().opacity, closeTo(1, 0.001));
-    expect(appBarOpacity().opacity, closeTo(1, 0.001));
+    expect(areaOffset(), closeTo(0, 0.001));
+    expect(areaOpacity().opacity, closeTo(1, 0.001));
 
-    await tester.tap(find.byTooltip('Activity'));
+    await tester.tap(find.byTooltip('Work'));
     await tester.pump();
 
-    expect(bodyOffset(), closeTo(24, 0.001));
-    expect(appBarOffset(), closeTo(24, 0.001));
-    expect(bodyOpacity().opacity, closeTo(0, 0.001));
-    expect(appBarOpacity().opacity, closeTo(0, 0.001));
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('frosted-app-bar-background')),
-        matching: find.byKey(
-          const ValueKey('frosted-app-bar-content-transition-transform'),
-        ),
-      ),
-      findsOneWidget,
-    );
+    expect(areaOffset(), closeTo(24, 0.001));
+    expect(areaOpacity().opacity, closeTo(0, 0.001));
 
     await tester.pump(const Duration(milliseconds: 120));
 
-    expect(bodyOffset(), inExclusiveRange(0, 24));
-    expect(appBarOffset(), inExclusiveRange(0, 24));
-    expect(bodyOpacity().opacity, inExclusiveRange(0, 1));
-    expect(appBarOpacity().opacity, inExclusiveRange(0, 1));
+    expect(areaOffset(), inExclusiveRange(0, 24));
+    expect(areaOpacity().opacity, inExclusiveRange(0, 1));
 
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Home'));
+    await tester.tap(find.byTooltip('Today'));
     await tester.pump();
 
-    expect(bodyOffset(), closeTo(-24, 0.001));
-    expect(appBarOffset(), closeTo(-24, 0.001));
-    expect(bodyOpacity().opacity, closeTo(0, 0.001));
-    expect(appBarOpacity().opacity, closeTo(0, 0.001));
+    expect(areaOffset(), closeTo(-24, 0.001));
+    expect(areaOpacity().opacity, closeTo(0, 0.001));
 
     await tester.pumpAndSettle();
-    expect(bodyOffset(), closeTo(0, 0.001));
-    expect(appBarOffset(), closeTo(0, 0.001));
-    expect(bodyOpacity().opacity, closeTo(1, 0.001));
-    expect(appBarOpacity().opacity, closeTo(1, 0.001));
+    expect(areaOffset(), closeTo(0, 0.001));
+    expect(areaOpacity().opacity, closeTo(1, 0.001));
   });
 
   testWidgets('switches tab content instantly with reduced motion', (
@@ -370,30 +340,20 @@ void main() {
     await tester.pumpWidget(await buildHome(disableAnimations: true));
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Activity'));
+    await tester.tap(find.byTooltip('Work'));
     await tester.pump();
 
-    final bodyTransform = tester.widget<Transform>(
-      find.byKey(const ValueKey('frosted-scaffold-body-transition-transform')),
+    final areaTransform = tester.widget<Transform>(
+      find.byKey(const ValueKey('mk-area-tab-transition-transform')),
     );
-    final bodyOpacity = tester.widget<Opacity>(
-      find.byKey(const ValueKey('frosted-scaffold-body-transition-opacity')),
+    final areaOpacity = tester.widget<Opacity>(
+      find.byKey(const ValueKey('mk-area-tab-transition-opacity')),
     );
-    final appBarTransform = tester.widget<Transform>(
-      find.byKey(
-        const ValueKey('frosted-app-bar-content-transition-transform'),
-      ),
-    );
-    final appBarOpacity = tester.widget<Opacity>(
-      find.byKey(const ValueKey('frosted-app-bar-content-transition-opacity')),
-    );
-    expect(bodyTransform.transform.getTranslation().x, closeTo(0, 0.001));
-    expect(appBarTransform.transform.getTranslation().x, closeTo(0, 0.001));
-    expect(bodyOpacity.opacity, closeTo(1, 0.001));
-    expect(appBarOpacity.opacity, closeTo(1, 0.001));
+    expect(areaTransform.transform.getTranslation().x, closeTo(0, 0.001));
+    expect(areaOpacity.opacity, closeTo(1, 0.001));
   });
 
-  testWidgets('scales and fades the quick action as tabs change', (
+  testWidgets('scales and fades Team conversation actions as tabs change', (
     tester,
   ) async {
     await tester.pumpWidget(await buildHome());
@@ -408,10 +368,21 @@ void main() {
         .widget<Opacity>(find.byKey(const Key('channel-quick-actions-opacity')))
         .opacity;
 
+    expect(scale(), closeTo(0.8, 0.001));
+    expect(opacity(), closeTo(0, 0.001));
+
+    await tester.tap(find.byTooltip('Team'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 110));
+
+    expect(scale(), inExclusiveRange(0.8, 1));
+    expect(opacity(), inExclusiveRange(0, 1));
+
+    await tester.pumpAndSettle();
     expect(scale(), closeTo(1, 0.001));
     expect(opacity(), closeTo(1, 0.001));
 
-    await tester.tap(find.byTooltip('Activity'));
+    await tester.tap(find.byTooltip('Today'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 110));
 
@@ -421,17 +392,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(scale(), closeTo(0.8, 0.001));
     expect(opacity(), closeTo(0, 0.001));
-
-    await tester.tap(find.byTooltip('Home'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 110));
-
-    expect(scale(), inExclusiveRange(0.8, 1));
-    expect(opacity(), inExclusiveRange(0, 1));
-
-    await tester.pumpAndSettle();
-    expect(scale(), closeTo(1, 0.001));
-    expect(opacity(), closeTo(1, 0.001));
   });
 }
 
