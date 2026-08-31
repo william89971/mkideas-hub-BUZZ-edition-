@@ -494,6 +494,10 @@ jobs:
 
   push-gateway-build:
     name: Build public push gateway (${{ matrix.platform }})
+    # The gateway's image name and attestation contract are Block-owned. Forks
+    # publish only their relay image unless they deliberately add a fork-owned
+    # push release path; MK Ideas keeps push disabled for this release.
+    if: github.repository == 'block/buzz'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -571,7 +575,7 @@ jobs:
 
   push-gateway-merge:
     name: Publish public push gateway image
-    if: github.event_name != 'pull_request'
+    if: github.repository == 'block/buzz' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     needs: push-gateway-build
     timeout-minutes: 15
