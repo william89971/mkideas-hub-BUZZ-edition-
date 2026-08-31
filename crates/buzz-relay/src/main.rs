@@ -997,6 +997,20 @@ async fn main() -> anyhow::Result<()> {
                                 &reason,
                             );
                         }
+                        buzz_pubsub::conn_control::ConnControl::DisconnectDevice {
+                            human_pubkey,
+                            device_pubkey,
+                            event_id,
+                            reason,
+                        } => {
+                            state_for_conn_ctrl.conn_manager.disconnect_device(
+                                scoped.community_id,
+                                &human_pubkey,
+                                &device_pubkey,
+                                &event_id,
+                                &reason,
+                            );
+                        }
                     },
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                         metrics::counter!("buzz_conn_control_lag_total").increment(n);

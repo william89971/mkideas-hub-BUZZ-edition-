@@ -18,6 +18,16 @@ overrides:
   # 5.0.1 / 5.0.2 respectively; pin >=5.0.2 to cover both. Removable once
   # markdown-it resolves linkify-it >=5.0.2 on its own.
   linkify-it: "^5.0.2"
+  # GHSA-6v5v-wf23-fmfq is fixed by markdown-it 14.1.2. Tiptap's compatible
+  # 14.x range otherwise continues selecting the affected 14.1.1 release.
+  markdown-it: "^14.1.2"
+  # postcss still permits nanoid 3.3.x releases affected by
+  # GHSA-2v37-7h3g-55p8. Keep all workspace build paths on the patched 3.x
+  # release until their upstream dependency floors advance.
+  nanoid: "^3.3.18"
+  # Vite's compatible PostCSS range can select releases affected by
+  # GHSA-fxqj-rqcc-2cmp; keep build-time source map parsing on the patched line.
+  postcss: "^8.5.23"
 patchedDependencies:
   isomorphic-git: patches/isomorphic-git.patch
   virtua@0.49.3: patches/virtua@0.49.3.patch

@@ -1128,7 +1128,7 @@ async fn query_events_authed(
             .ok_or_else(|| {
                 api_error(
                     StatusCode::BAD_REQUEST,
-                    "mk_projection must be `heads` or `history`",
+                    "mk_projection must be `heads`, `history`, or `operations`",
                 )
             })?;
         let kinds = raw
@@ -1146,14 +1146,19 @@ async fn query_events_authed(
                     "MK Ideas projection queries require explicit kinds",
                 )
             })?;
-        if kinds.is_empty()
-            || kinds
+        let kinds_are_valid = match projection {
+            "heads" | "history" => kinds
                 .iter()
-                .any(|kind| !buzz_core::kind::is_mkideas_state_kind(*kind))
-        {
+                .all(|kind| buzz_core::kind::is_mkideas_state_kind(*kind)),
+            "operations" => kinds
+                .iter()
+                .all(|kind| buzz_core::kind::is_mkideas_operation_kind(*kind)),
+            _ => false,
+        };
+        if kinds.is_empty() || !kinds_are_valid {
             return Err(api_error(
                 StatusCode::BAD_REQUEST,
-                "MK Ideas projection kinds must be within 30800-30899",
+                "MK Ideas projection kinds do not match the requested projection",
             ));
         }
         let limit = filter.limit.unwrap_or(100).min(200) as u32;
@@ -1229,10 +1234,79 @@ async fn query_events_authed(
                     .map_err(|error| internal_error(&format!("MK history query error: {error}")))?;
                 (events, next.map(|version| version.to_string()))
             }
+            "operations" => {
+                let cursor = raw
+                    .get("mk_cursor")
+                    .and_then(Value::as_str)
+                    .map(|cursor| {
+                        let (created_at, event_id) = cursor.split_once(':').ok_or(())?;
+                        let created_at = created_at.parse::<i64>().map_err(|_| ())?;
+                        let event_id = hex::decode(event_id).map_err(|_| ())?;
+                        if event_id.len() != 32 {
+                            return Err(());
+                        }
+                        let created_at =
+                            chrono::DateTime::from_timestamp(created_at, 0).ok_or(())?;
+                        Ok::<_, ()>((created_at, event_id))
+                    })
+                    .transpose()
+                    .map_err(|()| {
+                        api_error(
+                            StatusCode::BAD_REQUEST,
+                            "mk_cursor for operations must be `<unix-seconds>:<64-hex-event-id>`",
+                        )
+                    })?;
+                let mut query = crate::handlers::req::build_event_query_from_filter(
+                    filter,
+                    &pubkey_bytes,
+                    state,
+                    tenant.community(),
+                )
+                .await;
+                crate::handlers::req::apply_channel_scope_to_query(
+                    &mut query,
+                    filter,
+                    extract_channel_from_filter(filter),
+                    &accessible_channels,
+                );
+                query.limit = Some(i64::from(limit) + 1);
+                query.global_only = true;
+                if let Some((created_at, event_id)) = cursor {
+                    query.until = Some(created_at);
+                    query.before_id = Some(event_id);
+                }
+                let mut events = state
+                    .db
+                    .query_events_routed("bridge_mk_operations", &query)
+                    .await
+                    .map_err(|error| {
+                        internal_error(&format!("MK operation query error: {error}"))
+                    })?;
+                events.retain(|stored| {
+                    event_in_accessible_channel(stored, &accessible_channels)
+                        && buzz_core::filter::filters_match(std::slice::from_ref(filter), stored)
+                        && crate::handlers::req::event_visible_to_reader(
+                            &stored.event,
+                            &pubkey_bytes,
+                        )
+                });
+                let has_more = events.len() > limit as usize;
+                events.truncate(limit as usize);
+                let next = has_more.then(|| {
+                    events.last().map(|stored| {
+                        format!(
+                            "{}:{}",
+                            stored.event.created_at.as_secs(),
+                            stored.event.id.to_hex()
+                        )
+                    })
+                });
+                (events, next.flatten())
+            }
             _ => {
                 return Err(api_error(
                     StatusCode::BAD_REQUEST,
-                    "mk_projection must be `heads` or `history`",
+                    "mk_projection must be `heads`, `history`, or `operations`",
                 ));
             }
         };

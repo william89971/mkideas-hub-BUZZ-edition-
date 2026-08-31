@@ -54,11 +54,15 @@ export async function fetchMkIdeasSnapshot(
       },
       projectionTransport,
     ),
-    relayClient.fetchEvents({
-      kinds: MK_OPERATION_KINDS,
-      "#h": [host],
-      limit: 200,
-    }),
+    collectMkProjection(
+      {
+        projection: "operations",
+        kinds: [...MK_OPERATION_KINDS],
+        community: host,
+        limit: 200,
+      },
+      projectionTransport,
+    ),
   ]);
   return parseMkIdeasEvents([...heads, ...operations]);
 }

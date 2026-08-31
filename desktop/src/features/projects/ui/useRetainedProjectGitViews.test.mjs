@@ -16,20 +16,14 @@ import { buildProjectDetailCrumbs } from "./useProjectDetailCrumbs.ts";
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === "@/features/forum/ui/ForumComposer") {
-      return { shortCircuit: true, url: "buzz-pr-panel-stub:ForumComposer" };
-    }
-    return nextResolve(specifier, context);
-  },
-  load(url, context, nextLoad) {
-    if (url === "buzz-pr-panel-stub:ForumComposer") {
+      const source =
+        "globalThis.__FORUM_COMPOSER_STUBBED__ = true;\nexport function ForumComposer() { return null; }\n";
       return {
-        format: "module",
         shortCircuit: true,
-        source:
-          "globalThis.__FORUM_COMPOSER_STUBBED__ = true;\nexport function ForumComposer() { return null; }\n",
+        url: `data:text/javascript,${encodeURIComponent(source)}`,
       };
     }
-    return nextLoad(url, context);
+    return nextResolve(specifier, context);
   },
 });
 

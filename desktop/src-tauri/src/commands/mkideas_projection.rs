@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use buzz_core_pkg::kind::is_mkideas_state_kind;
+use buzz_core_pkg::kind::{is_mkideas_operation_kind, is_mkideas_state_kind};
 use nostr::Event;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,7 @@ const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 enum Projection {
     Heads,
     History,
+    Operations,
 }
 
 impl Projection {
@@ -28,7 +29,8 @@ impl Projection {
         match value {
             "heads" => Ok(Self::Heads),
             "history" => Ok(Self::History),
-            _ => Err("projection must be `heads` or `history`".to_string()),
+            "operations" => Ok(Self::Operations),
+            _ => Err("projection must be `heads`, `history`, or `operations`".to_string()),
         }
     }
 
@@ -36,6 +38,7 @@ impl Projection {
         match self {
             Self::Heads => "heads",
             Self::History => "history",
+            Self::Operations => "operations",
         }
     }
 }
@@ -50,13 +53,13 @@ struct ProjectionArgs {
     limit: u32,
 }
 
-/// Typed input for an MK Ideas current-head or immutable-history query.
+/// Typed input for an MK Ideas current-head, history, or operation query.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MkIdeasProjectionInput {
-    /// Projection to query: `heads` or `history`.
+    /// Projection to query: `heads`, `history`, or `operations`.
     projection: String,
-    /// Registered MK Ideas addressable-state kinds to include.
+    /// Registered MK Ideas kinds supported by the selected projection.
     kinds: Vec<u32>,
     /// Host-derived community identifier.
     community: String,
@@ -95,10 +98,16 @@ fn validate_args(
 ) -> Result<ProjectionArgs, String> {
     let projection = Projection::parse(projection)?;
     if kinds.is_empty() {
-        return Err("kinds must contain at least one MK Ideas state kind".to_string());
+        return Err("kinds must contain at least one MK Ideas kind".to_string());
     }
-    if kinds.iter().any(|kind| !is_mkideas_state_kind(*kind)) {
-        return Err("every kind must be a registered MK Ideas state kind".to_string());
+    let kinds_are_valid = match projection {
+        Projection::Heads | Projection::History => {
+            kinds.iter().all(|kind| is_mkideas_state_kind(*kind))
+        }
+        Projection::Operations => kinds.iter().all(|kind| is_mkideas_operation_kind(*kind)),
+    };
+    if !kinds_are_valid {
+        return Err("kinds do not match the selected MK Ideas projection".to_string());
     }
     let unique = kinds.iter().copied().collect::<HashSet<_>>();
     if unique.len() != kinds.len() {
@@ -124,6 +133,10 @@ fn validate_args(
     let entity_id = match (projection, entity_id) {
         (Projection::Heads, None) => None,
         (Projection::Heads, Some(_)) => {
+            return Err("entityId is only valid for history queries".to_string());
+        }
+        (Projection::Operations, None) => None,
+        (Projection::Operations, Some(_)) => {
             return Err("entityId is only valid for history queries".to_string());
         }
         (Projection::History, Some(value)) => Some(
@@ -175,6 +188,19 @@ fn validate_cursor(projection: Projection, kinds: &[u32], cursor: &str) -> Resul
                 return Err("history cursor must be a positive version number".to_string());
             }
         }
+        Projection::Operations => {
+            let (created_at, event_id) = cursor.split_once(':').ok_or_else(|| {
+                "operations cursor must be `<unix-seconds>:<64-hex-event-id>`".to_string()
+            })?;
+            created_at.parse::<i64>().map_err(|_| {
+                "operations cursor timestamp must be Unix seconds".to_string()
+            })?;
+            let event_id = hex::decode(event_id)
+                .map_err(|_| "operations cursor event id must be hex".to_string())?;
+            if event_id.len() != 32 {
+                return Err("operations cursor event id must be 32 bytes".to_string());
+            }
+        }
     }
     Ok(())
 }
@@ -216,16 +242,28 @@ fn parse_response(
                 "MK Ideas projection returned unexpected kind {kind}"
             ));
         }
-        let envelope = buzz_core_pkg::mkideas::validate_state_event(event)
-            .map_err(|error| format!("MK Ideas projection returned invalid state: {error}"))?;
-        if envelope.community != args.community {
+        let event_community = event
+            .tags
+            .iter()
+            .filter_map(|tag| {
+                let values = tag.as_slice();
+                (values.first().map(String::as_str) == Some("h"))
+                    .then(|| values.get(1).map(String::as_str))
+                    .flatten()
+            })
+            .collect::<Vec<_>>();
+        if event_community.as_slice() != [args.community.as_str()] {
             return Err("MK Ideas projection crossed the requested community".to_string());
         }
-        if args
-            .entity_id
-            .is_some_and(|entity_id| envelope.entity_id != entity_id)
-        {
-            return Err("MK Ideas history returned a different entity".to_string());
+        if args.projection != Projection::Operations {
+            let envelope = buzz_core_pkg::mkideas::validate_state_event(event)
+                .map_err(|error| format!("MK Ideas projection returned invalid state: {error}"))?;
+            if args
+                .entity_id
+                .is_some_and(|entity_id| envelope.entity_id != entity_id)
+            {
+                return Err("MK Ideas history returned a different entity".to_string());
+            }
         }
     }
 
@@ -235,7 +273,7 @@ fn parse_response(
     })
 }
 
-/// Query the relay's NIP-MK current-head or immutable-history projection.
+/// Query the relay's NIP-MK current-head, immutable-history, or operation projection.
 #[tauri::command]
 pub async fn query_mkideas_projection(
     state: State<'_, AppState>,
@@ -276,7 +314,7 @@ pub async fn query_mkideas_projection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use buzz_core_pkg::kind::{KIND_MK_CONTENT, KIND_MK_PERSON};
+    use buzz_core_pkg::kind::{KIND_MK_CONTENT, KIND_MK_PERSON, KIND_MK_SYSTEM_ACTIVITY};
     use nostr::{EventBuilder, Keys, Kind, Tag};
 
     fn signed_person(community: &str, entity_id: Uuid) -> Event {
@@ -303,7 +341,17 @@ mod tests {
             Tag::parse(["status", "prospect"]).expect("status tag"),
         ])
         .sign_with_keys(&Keys::generate())
-        .expect("signed person")
+            .expect("signed person")
+    }
+
+    fn signed_operation(community: &str) -> Event {
+        EventBuilder::new(
+            Kind::from(KIND_MK_SYSTEM_ACTIVITY as u16),
+            json!({"schema_version": 2, "activity_type": "test"}).to_string(),
+        )
+        .tags([Tag::parse(["h", community]).expect("h tag")])
+        .sign_with_keys(&Keys::generate())
+        .expect("signed operation")
     }
 
     #[test]
@@ -403,6 +451,42 @@ mod tests {
     }
 
     #[test]
+    fn operations_request_uses_a_dense_second_safe_cursor() {
+        let event_id = "ab".repeat(32);
+        let args = validate_args(
+            "operations",
+            vec![KIND_MK_SYSTEM_ACTIVITY],
+            "hub.mkideas.org".to_string(),
+            None,
+            Some(format!("1730000000:{event_id}")),
+            Some(200),
+        )
+        .expect("valid operations args");
+        let body: Value = serde_json::from_slice(&request_body(&args).expect("request body"))
+            .expect("request JSON");
+        assert_eq!(body[0]["mk_projection"], "operations");
+        assert_eq!(body[0]["mk_cursor"], format!("1730000000:{event_id}"));
+        assert!(validate_args(
+            "operations",
+            vec![KIND_MK_PERSON],
+            "hub.mkideas.org".to_string(),
+            None,
+            None,
+            None,
+        )
+        .is_err());
+        assert!(validate_args(
+            "heads",
+            vec![KIND_MK_SYSTEM_ACTIVITY],
+            "hub.mkideas.org".to_string(),
+            None,
+            None,
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
     fn response_parser_returns_verified_signed_events_and_cursor() {
         let entity_id = Uuid::new_v4();
         let args = validate_args(
@@ -427,5 +511,26 @@ mod tests {
         )
         .is_err());
         assert!(parse_response(json!([&event]), &args).is_err());
+    }
+
+    #[test]
+    fn response_parser_accepts_verified_operation_pages() {
+        let event = signed_operation("hub.mkideas.org");
+        let cursor = format!("{}:{}", event.created_at.as_secs(), event.id.to_hex());
+        let args = validate_args(
+            "operations",
+            vec![KIND_MK_SYSTEM_ACTIVITY],
+            "hub.mkideas.org".to_string(),
+            None,
+            None,
+            Some(1),
+        )
+        .expect("valid operations args");
+        let parsed = parse_response(
+            json!({"events": [&event], "nextCursor": cursor}),
+            &args,
+        )
+        .expect("valid operations page");
+        assert_eq!(parsed.events, vec![event]);
     }
 }

@@ -33,12 +33,20 @@ and then run:
 cargo test -p buzz-test-client --test e2e_mkideas -- --ignored --nocapture
 ```
 
+The 501-event pagination case may raise only the disposable test relay's
+`BUZZ_RATE_LIMIT_HUMAN_WS_EVENTS_PER_SEC`,
+`BUZZ_RATE_LIMIT_HUMAN_MESSAGES_PER_MIN`, and
+`BUZZ_RATE_LIMIT_AGENT_STANDARD_MESSAGES_PER_MIN` values. Do not change the
+product defaults to make this test pass. Rate-limited `EVENT` submissions must
+receive NIP-01 `OK false` immediately rather than timing out.
+
 The test must prove:
 
 - Two independent human signers can advance one shared MK coordinate.
 - A stale human update is rejected and the winning human signature is kept.
 - Live subscriptions deliver the accepted update without manual refresh.
-- `mk-heads` and `mk-history` return signed events with cursor pagination.
+- `mk-heads`, `mk-history`, and `mk-operations` return signed events with
+  cursor pagination, including more than 500 operations and a dense timestamp.
 - A service grant is limited to its community, persona, and event kind.
 - An agent proposal is accepted but an agent approval action is rejected.
 - One human approval transaction stores the decision, resulting human state,

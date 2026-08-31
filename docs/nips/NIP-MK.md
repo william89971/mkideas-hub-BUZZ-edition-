@@ -97,10 +97,12 @@ projection. Under a row lock it MUST:
 
 Two concurrent updates cannot both win. A stale update returns the current
 version and event ID. Ordinary Nostr query, count, and search paths expose only
-the projected head. `/query` extensions `mk_projection: "heads"` and
-`mk_projection: "history"` return `{events, nextCursor}`; plain filters retain
-their standard array response. Live subscriptions continue carrying signed
-events.
+the projected head. `/query` extensions `mk_projection: "heads"`,
+`mk_projection: "history"`, and `mk_projection: "operations"` return
+`{events, nextCursor}`; plain filters retain their standard array response.
+The operations cursor is an opaque keyset over `(created_at, event_id)`, so a
+client can traverse more than one page even when many operation events share a
+timestamp. Live subscriptions continue carrying signed events.
 
 Archiving is a validated state transition, not NIP-09 deletion.
 

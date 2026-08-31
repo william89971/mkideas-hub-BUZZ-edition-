@@ -27,35 +27,27 @@ import { JSDOM } from "jsdom";
 // MessageComposer mounts TipTap, which never releases jsdom handles and hangs
 // the node:test process. Stub it to a null component so InboxDetailPane can
 // prove its reopen wiring without pulling the editor in.
+const stubModules = new Map([
+  [
+    "@/features/messages/ui/MessageComposer",
+    "export const MessageComposer = () => null;\n",
+  ],
+  [
+    "@/features/settings/UpdateIndicator",
+    "export const UpdateIndicator = () => null;\n",
+  ],
+]);
+
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === "@/features/messages/ui/MessageComposer") {
-      return { shortCircuit: true, url: "buzz-inbox-stub:MessageComposer" };
-    }
-    if (specifier === "@/features/settings/UpdateIndicator") {
-      return { shortCircuit: true, url: "buzz-inbox-stub:UpdateIndicator" };
+    const source = stubModules.get(specifier);
+    if (source !== undefined) {
+      return {
+        shortCircuit: true,
+        url: `data:text/javascript,${encodeURIComponent(source)}`,
+      };
     }
     return nextResolve(specifier, context);
-  },
-  load(url, context, nextLoad) {
-    if (url === "buzz-inbox-stub:MessageComposer") {
-      return {
-        format: "module",
-        shortCircuit: true,
-        source: "export const MessageComposer = () => null;\n",
-      };
-    }
-    if (url === "buzz-inbox-stub:UpdateIndicator") {
-      // The real UpdateIndicator pulls in UpdaterProvider's background-check
-      // setInterval, which keeps the event loop alive past the test. It has
-      // nothing to do with the reopen contract, so stub it to a null render.
-      return {
-        format: "module",
-        shortCircuit: true,
-        source: "export const UpdateIndicator = () => null;\n",
-      };
-    }
-    return nextLoad(url, context);
   },
 });
 

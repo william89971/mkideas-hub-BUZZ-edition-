@@ -1,7 +1,7 @@
 import type { RelayEvent } from "@/shared/api/types";
 import { invokeTauri } from "@/shared/api/tauri";
 
-export type MkProjection = "heads" | "history";
+export type MkProjection = "heads" | "history" | "operations";
 
 export type MkProjectionQuery = {
   projection: MkProjection;

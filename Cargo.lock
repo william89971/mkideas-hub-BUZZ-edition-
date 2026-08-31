@@ -863,6 +863,7 @@ name = "buzz-admin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "buzz-audit",
  "buzz-auth",
  "buzz-core",
@@ -877,8 +878,10 @@ dependencies = [
  "chrono",
  "clap",
  "deadpool-redis",
+ "futures-util",
  "hex",
  "nostr 0.44.7",
+ "reqwest 0.13.4",
  "rustls",
  "serde",
  "serde_json",

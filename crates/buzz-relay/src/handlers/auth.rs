@@ -301,7 +301,7 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
                 )
                 .await
             };
-            match device_decision {
+            let authenticated_device_pubkey = match device_decision {
                 crate::device_security::DeviceAuthDecision::Denied(reason) => {
                     warn!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), reason, "device grant denied authentication");
                     metrics::counter!("buzz_auth_failures_total", "reason" => "device_grant")
@@ -321,18 +321,68 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
                 crate::device_security::DeviceAuthDecision::AuditAllowed => {
                     metrics::counter!("buzz_device_grant_audit_misses_total").increment(1);
                     warn!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), "device grant audit allowed an unenrolled session");
+                    None
                 }
-                crate::device_security::DeviceAuthDecision::Active(_) => {
+                crate::device_security::DeviceAuthDecision::Active(device_pubkey) => {
                     metrics::counter!("buzz_device_grant_auth_total").increment(1);
+                    Some(device_pubkey.to_bytes().to_vec())
                 }
-                crate::device_security::DeviceAuthDecision::Bypassed => {}
-            }
+                crate::device_security::DeviceAuthDecision::Bypassed => None,
+            };
 
-            info!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), "NIP-42 auth successful");
-            *conn.auth_state.write().await = AuthState::Authenticated(auth_ctx);
             state
                 .conn_manager
                 .set_authenticated_pubkey(conn_id, pubkey.to_bytes().to_vec());
+            if let Some(device_pubkey) = authenticated_device_pubkey.as_deref() {
+                state
+                    .conn_manager
+                    .set_authenticated_device_pubkey(conn_id, device_pubkey.to_vec());
+
+                // Close the narrow race between validating a grant and binding
+                // its device identity to this live connection. Once the pair is
+                // registered, a concurrent revoke can find and disconnect it;
+                // this second read catches a revoke that completed just before
+                // registration and never promotes the connection to authenticated.
+                match state
+                    .db
+                    .mkideas_device_grant_active(
+                        conn.tenant.community(),
+                        pubkey.as_bytes(),
+                        device_pubkey,
+                    )
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        warn!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), "device grant was revoked while authentication completed");
+                        metrics::counter!("buzz_auth_failures_total", "reason" => "device_grant_race")
+                            .increment(1);
+                        *conn.auth_state.write().await = AuthState::Failed;
+                        conn.send(RelayMessage::ok(
+                            &event_id_hex,
+                            false,
+                            "auth-required: device grant is no longer active",
+                        ));
+                        conn.cancel.cancel();
+                        return;
+                    }
+                    Err(error) => {
+                        warn!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), %error, "device grant could not be revalidated");
+                        metrics::counter!("buzz_auth_failures_total", "reason" => "device_grant_revalidation")
+                            .increment(1);
+                        *conn.auth_state.write().await = AuthState::Failed;
+                        conn.send(RelayMessage::ok(
+                            &event_id_hex,
+                            false,
+                            "auth-required: device grant could not be verified",
+                        ));
+                        conn.cancel.cancel();
+                        return;
+                    }
+                }
+            }
+            info!(conn_id = %conn_id, pubkey = %pubkey.to_hex(), "NIP-42 auth successful");
+            *conn.auth_state.write().await = AuthState::Authenticated(auth_ctx);
             conn.send(RelayMessage::ok(&event_id_hex, true, ""));
         }
         Err(e) => {

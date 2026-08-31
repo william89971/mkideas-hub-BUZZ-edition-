@@ -394,14 +394,15 @@ impl Db {
             .collect()
     }
 
-    /// Revoke one device and return its human identity for live-session eviction.
+    /// Revoke one device and return its human and device identities for exact
+    /// live-session eviction.
     pub async fn revoke_mkideas_device_grant(
         &self,
         community: CommunityId,
         grant_id: Uuid,
         revoked_by: &[u8],
         reason: &str,
-    ) -> Result<Option<Vec<u8>>> {
+    ) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
         let revoker_hex = hex::encode(revoked_by);
         let row = sqlx::query(
             r#"
@@ -416,7 +417,7 @@ impl Db {
                         AND role IN ('owner', 'admin')
                   )
               )
-            RETURNING human_pubkey
+            RETURNING human_pubkey, device_pubkey
             "#,
         )
         .bind(grant_id)
@@ -426,9 +427,14 @@ impl Db {
         .bind(revoker_hex)
         .fetch_optional(&self.pool)
         .await?;
-        row.map(|row| row.try_get("human_pubkey"))
-            .transpose()
-            .map_err(DbError::from)
+        row.map(|row| {
+            std::result::Result::<(Vec<u8>, Vec<u8>), sqlx::Error>::Ok((
+                row.try_get("human_pubkey")?,
+                row.try_get("device_pubkey")?,
+            ))
+        })
+        .transpose()
+        .map_err(DbError::from)
     }
 
     /// Create a surviving-device recovery request after verifying its active grant.

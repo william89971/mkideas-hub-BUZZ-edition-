@@ -12,9 +12,10 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use buzz_core::kind::{
     KIND_MK_AGENT_PROPOSAL, KIND_MK_APPROVAL, KIND_MK_APPROVAL_ACTION, KIND_MK_PERSON,
+    KIND_MK_SYSTEM_ACTIVITY,
 };
 use buzz_test_client::{BuzzTestClient, RelayMessage};
-use nostr::{Event, EventBuilder, Filter, Keys, Kind, Tag};
+use nostr::{Event, EventBuilder, Filter, Keys, Kind, Tag, Timestamp};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -117,6 +118,43 @@ async fn seed_agent_service(pool: &PgPool, community_id: Uuid, owner: &Keys, ser
     .execute(pool)
     .await
     .expect("seed narrow guest-researcher capability");
+}
+
+async fn seed_maintenance_service(pool: &PgPool, community_id: Uuid, owner: &Keys, service: &Keys) {
+    let owner_pubkey = owner.public_key().to_bytes();
+    let service_pubkey = service.public_key().to_bytes();
+    sqlx::query(
+        "INSERT INTO users (community_id, pubkey) VALUES ($1, $2) \
+         ON CONFLICT (community_id, pubkey) DO NOTHING",
+    )
+    .bind(community_id)
+    .bind(owner_pubkey.as_slice())
+    .execute(pool)
+    .await
+    .expect("seed maintenance owner identity");
+    sqlx::query(
+        "INSERT INTO users (community_id, pubkey, agent_owner_pubkey) VALUES ($1, $2, $3) \
+         ON CONFLICT (community_id, pubkey) DO UPDATE SET agent_owner_pubkey = $3",
+    )
+    .bind(community_id)
+    .bind(service_pubkey.as_slice())
+    .bind(owner_pubkey.as_slice())
+    .execute(pool)
+    .await
+    .expect("seed owned maintenance identity");
+    sqlx::query(
+        "INSERT INTO mk_service_grants (community_id, service_pubkey, owner_pubkey, purpose, persona, allowed_event_kinds, allowed_target_kinds, expires_at) \
+         VALUES ($1, $2, $3, 'maintenance', NULL, $4, '{}', now() + interval '1 hour') \
+         ON CONFLICT (community_id, service_pubkey, purpose, persona, dataset_sha256) \
+         DO UPDATE SET allowed_event_kinds = $4, expires_at = now() + interval '1 hour', revoked_at = NULL",
+    )
+    .bind(community_id)
+    .bind(service_pubkey.as_slice())
+    .bind(owner_pubkey.as_slice())
+    .bind(vec![KIND_MK_SYSTEM_ACTIVITY as i32])
+    .execute(pool)
+    .await
+    .expect("seed narrow maintenance capability");
 }
 
 fn guest_event(
@@ -318,6 +356,94 @@ async fn projection_query(keys: &Keys, filter: Value) -> Value {
         .expect("POST projection query");
     assert_eq!(response.status(), StatusCode::OK);
     response.json().await.expect("parse projection response")
+}
+
+fn system_activity_event(service: &Keys, sequence: usize, created_at: Timestamp) -> Event {
+    EventBuilder::new(
+        Kind::Custom(KIND_MK_SYSTEM_ACTIVITY as u16),
+        json!({
+            "schema_version": 2,
+            "activity_type": "pagination_acceptance",
+            "status": "recorded",
+            "sequence": sequence
+        })
+        .to_string(),
+    )
+    .tags([Tag::parse(["h", &relay_authority()]).expect("h tag")])
+    .custom_created_at(created_at)
+    .sign_with_keys(service)
+    .expect("sign pagination activity")
+}
+
+#[tokio::test]
+#[ignore]
+async fn operation_projection_pages_more_than_500_events_with_dense_timestamps() {
+    const EVENT_COUNT: usize = 501;
+    const PAGE_SIZE: usize = 200;
+
+    let owner = Keys::generate();
+    let service = Keys::generate();
+    let pool = database_pool().await;
+    let community_id = seed_human(&pool, &owner, "owner").await;
+    seed_human(&pool, &service, "member").await;
+    seed_maintenance_service(&pool, community_id, &owner, &service).await;
+    let mut service_client = BuzzTestClient::connect(&relay_ws_url(), &service)
+        .await
+        .expect("maintenance service connects");
+    let dense_timestamp = Timestamp::now();
+    let mut expected = std::collections::BTreeSet::new();
+    for sequence in 0..EVENT_COUNT {
+        let event = system_activity_event(&service, sequence, dense_timestamp);
+        expected.insert(event.id.to_hex());
+        let result = service_client
+            .send_event(event)
+            .await
+            .expect("relay returns pagination activity result");
+        assert!(result.accepted, "{}", result.message);
+    }
+
+    let mut cursor: Option<Value> = None;
+    let mut seen = std::collections::BTreeSet::new();
+    let mut page_count = 0;
+    loop {
+        let mut filter = json!({
+            "mk_projection": "operations",
+            "kinds": [KIND_MK_SYSTEM_ACTIVITY],
+            "#h": [relay_authority()],
+            "limit": PAGE_SIZE
+        });
+        if let Some(value) = cursor.take() {
+            filter["mk_cursor"] = value;
+        }
+        let page = projection_query(&owner, filter).await;
+        let events = page["events"].as_array().expect("operation page events");
+        assert!(events.len() <= PAGE_SIZE);
+        for event in events {
+            let id = event["id"].as_str().expect("operation event id");
+            if expected.contains(id) {
+                assert!(
+                    seen.insert(id.to_string()),
+                    "operation repeated across pages"
+                );
+            }
+        }
+        page_count += 1;
+        if page["nextCursor"].is_null() {
+            break;
+        }
+        cursor = Some(page["nextCursor"].clone());
+        assert!(page_count < 10, "operation cursor failed to terminate");
+    }
+
+    assert_eq!(seen, expected);
+    assert!(
+        page_count >= 3,
+        "501 records must span at least three pages"
+    );
+    service_client
+        .disconnect()
+        .await
+        .expect("maintenance service disconnects");
 }
 
 #[tokio::test]

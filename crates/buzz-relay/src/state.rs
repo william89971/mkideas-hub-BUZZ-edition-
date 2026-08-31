@@ -107,6 +107,7 @@ struct ConnEntry {
     backpressure_count: Arc<AtomicU8>,
     subscriptions: ConnectionSubscriptions,
     authenticated_pubkey: Arc<std::sync::RwLock<Option<Vec<u8>>>>,
+    authenticated_device_pubkey: Arc<std::sync::RwLock<Option<Vec<u8>>>>,
     grace_limit: u8,
 }
 
@@ -282,6 +283,7 @@ impl ConnectionManager {
                 backpressure_count,
                 subscriptions,
                 authenticated_pubkey: Arc::new(std::sync::RwLock::new(None)),
+                authenticated_device_pubkey: Arc::new(std::sync::RwLock::new(None)),
                 grace_limit,
             },
         );
@@ -313,6 +315,17 @@ impl ConnectionManager {
         }
     }
 
+    /// Record the independently authenticated device key after a device-grant
+    /// proof succeeds. Connections admitted without a device proof keep no
+    /// device identity and cannot match an exact-device disconnect.
+    pub fn set_authenticated_device_pubkey(&self, conn_id: Uuid, device_pubkey: Vec<u8>) {
+        if let Some(entry) = self.connections.get(&conn_id) {
+            if let Ok(mut slot) = entry.authenticated_device_pubkey.write() {
+                *slot = Some(device_pubkey);
+            }
+        }
+    }
+
     /// Return live connection IDs authenticated as `pubkey_bytes` in one community.
     ///
     /// The same Nostr key may be connected to multiple communities at once.
@@ -339,6 +352,43 @@ impl ConnectionManager {
                         })
                         .unwrap_or(false);
                 matches.then_some(*entry.key())
+            })
+            .collect()
+    }
+
+    /// Return live connection IDs matching one exact human/device grant pair
+    /// inside a community.
+    pub fn connection_ids_for_device_in_community(
+        &self,
+        community_id: CommunityId,
+        human_pubkey: &[u8],
+        device_pubkey: &[u8],
+    ) -> Vec<Uuid> {
+        self.connections
+            .iter()
+            .filter_map(|entry| {
+                let human_matches = entry
+                    .authenticated_pubkey
+                    .read()
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .as_ref()
+                            .map(|stored| stored.as_slice() == human_pubkey)
+                    })
+                    .unwrap_or(false);
+                let device_matches = entry
+                    .authenticated_device_pubkey
+                    .read()
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .as_ref()
+                            .map(|stored| stored.as_slice() == device_pubkey)
+                    })
+                    .unwrap_or(false);
+                (entry.community_id == community_id && human_matches && device_matches)
+                    .then_some(*entry.key())
             })
             .collect()
     }
@@ -384,6 +434,31 @@ impl ConnectionManager {
                 }
                 // Best-effort delivery: a full control buffer still gets the
                 // close via cancel below, just without the reason frame.
+                let _ = entry
+                    .ctrl_tx
+                    .try_send(WsMessage::Text(frame.clone().into()));
+                entry.cancel.cancel();
+                closed += 1;
+            }
+        }
+        closed
+    }
+
+    /// Disconnect one exact authenticated device inside a community.
+    pub fn disconnect_device(
+        &self,
+        community: CommunityId,
+        human_pubkey: &[u8],
+        device_pubkey: &[u8],
+        event_id: &str,
+        reason: &str,
+    ) -> usize {
+        let frame = crate::protocol::RelayMessage::ok(event_id, false, reason);
+        let mut closed = 0usize;
+        for conn_id in
+            self.connection_ids_for_device_in_community(community, human_pubkey, device_pubkey)
+        {
+            if let Some(entry) = self.connections.get(&conn_id) {
                 let _ = entry
                     .ctrl_tx
                     .try_send(WsMessage::Text(frame.clone().into()));
@@ -1197,6 +1272,39 @@ impl AppState {
         closed
     }
 
+    /// Disconnect one exact physical device cluster-wide after durable grant
+    /// revocation, leaving the human's other devices connected.
+    pub fn disconnect_device_clusterwide(
+        &self,
+        tenant: &TenantContext,
+        human_pubkey: &[u8],
+        device_pubkey: &[u8],
+        event_id: &str,
+        reason: &str,
+    ) -> usize {
+        let closed = self.conn_manager.disconnect_device(
+            tenant.community(),
+            human_pubkey,
+            device_pubkey,
+            event_id,
+            reason,
+        );
+        let pubsub = Arc::clone(&self.pubsub);
+        let tenant = tenant.clone();
+        let command = ConnControl::DisconnectDevice {
+            human_pubkey: human_pubkey.to_vec(),
+            device_pubkey: device_pubkey.to_vec(),
+            event_id: event_id.to_string(),
+            reason: reason.to_string(),
+        };
+        tokio::spawn(async move {
+            if let Err(error) = pubsub.publish_conn_control(&tenant, &command).await {
+                tracing::warn!("Failed to publish exact-device disconnect: {error}");
+            }
+        });
+        closed
+    }
+
     /// Disconnect a community locally and publish the command to every relay pod.
     ///
     /// Publication is awaited so the archive API can distinguish durable state
@@ -1926,6 +2034,62 @@ mod tests {
 
         assert_eq!(closed, 0, "no connection matches a different pubkey");
         assert!(!cancel.is_cancelled(), "unrelated connection stays live");
+    }
+
+    #[tokio::test]
+    async fn disconnect_device_closes_only_the_exact_grant_session() {
+        let mgr = ConnectionManager::new();
+        let community = CommunityId::from_uuid(Uuid::nil());
+        let human = vec![1u8; 32];
+        let device_a = vec![2u8; 32];
+        let device_b = vec![3u8; 32];
+        let id_a = Uuid::new_v4();
+        let id_b = Uuid::new_v4();
+        let cancel_a = CancellationToken::new();
+        let cancel_b = CancellationToken::new();
+        let (tx_a, _rx_a) = mpsc::channel(2);
+        let (ctrl_a, _ctrl_rx_a) = mpsc::channel(2);
+        let (tx_b, _rx_b) = mpsc::channel(2);
+        let (ctrl_b, _ctrl_rx_b) = mpsc::channel(2);
+        for (id, tx, ctrl, cancel) in [
+            (id_a, tx_a, ctrl_a, cancel_a.clone()),
+            (id_b, tx_b, ctrl_b, cancel_b.clone()),
+        ] {
+            mgr.register(
+                id,
+                tx,
+                ctrl,
+                None,
+                cancel,
+                community,
+                Arc::new(AtomicU8::new(0)),
+                Arc::new(Mutex::new(HashMap::new())),
+                3,
+            );
+            mgr.set_authenticated_pubkey(id, human.clone());
+        }
+        mgr.set_authenticated_device_pubkey(id_a, device_a.clone());
+        mgr.set_authenticated_device_pubkey(id_b, device_b.clone());
+
+        assert_eq!(
+            mgr.connection_ids_for_device_in_community(community, &human, &device_a),
+            vec![id_a]
+        );
+        assert_eq!(
+            mgr.disconnect_device(
+                community,
+                &human,
+                &device_a,
+                &"0".repeat(64),
+                "auth-required: this device was revoked",
+            ),
+            1
+        );
+        assert!(cancel_a.is_cancelled());
+        assert!(
+            !cancel_b.is_cancelled(),
+            "unaffected device remains connected"
+        );
     }
 
     #[tokio::test]

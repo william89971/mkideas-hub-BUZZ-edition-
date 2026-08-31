@@ -270,11 +270,7 @@ pub async fn evaluate_device_auth(
     }
 }
 
-/// Revoke a grant and terminate the human's active sessions cluster-wide.
-///
-/// Until the connection registry records independent device keys, this safely
-/// closes all of the human's sessions. Durable grant state still prevents only
-/// the revoked device from authenticating again; unaffected devices reconnect.
+/// Revoke a grant and terminate only that device's active sessions cluster-wide.
 pub async fn revoke_device_and_disconnect_sessions(
     state: &AppState,
     tenant: &TenantContext,
@@ -287,7 +283,7 @@ pub async fn revoke_device_and_disconnect_sessions(
             "device revocation reason must be 8-500 characters".into(),
         ));
     }
-    let Some(human_pubkey) = state
+    let Some((human_pubkey, device_pubkey)) = state
         .db
         .revoke_mkideas_device_grant(tenant.community(), grant_id, revoked_by, reason.trim())
         .await?
@@ -295,9 +291,10 @@ pub async fn revoke_device_and_disconnect_sessions(
         return Ok(0);
     };
     let event_id = "0".repeat(64);
-    Ok(state.disconnect_pubkey_clusterwide(
+    Ok(state.disconnect_device_clusterwide(
         tenant,
         &human_pubkey,
+        &device_pubkey,
         &event_id,
         "auth-required: a device grant was revoked",
     ))

@@ -22,6 +22,7 @@
 
 mod deletions;
 mod migration;
+mod migration_export;
 mod migration_submit;
 
 use std::sync::Arc;

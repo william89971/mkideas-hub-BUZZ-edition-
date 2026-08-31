@@ -10,7 +10,6 @@ void main() {
     var call = 0;
     final repository = MkIdeasRepository(
       community: 'hub.mkideas.test',
-      queryEvents: (_) async => const [],
       queryProjection: (filter) async {
         seen.add(filter);
         call += 1;
@@ -46,7 +45,6 @@ void main() {
       NostrFilter? seen;
       final repository = MkIdeasRepository(
         community: 'hub.mkideas.test',
-        queryEvents: (_) async => const [],
         queryProjection: (filter) async {
           seen = filter;
           return RelayQueryPage(events: [_stateEvent(2)], nextCursor: 'older');
@@ -69,7 +67,6 @@ void main() {
   test('fails closed when the relay repeats a head cursor', () async {
     final repository = MkIdeasRepository(
       community: 'hub.mkideas.test',
-      queryEvents: (_) async => const [],
       queryProjection: (_) async =>
           const RelayQueryPage(events: [], nextCursor: 'same-page'),
     );
@@ -84,7 +81,6 @@ void main() {
     );
     final repository = MkIdeasRepository(
       community: 'hub.mkideas.test',
-      queryEvents: (_) async => const [],
       queryProjection: (_) async => RelayQueryPage(
         events: [
           _stateEvent(1, entityId: '00000000-0000-4000-8000-000000000002'),
@@ -96,6 +92,32 @@ void main() {
       repository.fetchHistoryPage(coordinate),
       throwsFormatException,
     );
+  });
+
+  test('walks every mk-operations cursor beyond one relay page', () async {
+    const operationCursor =
+        '2:abababababababababababababababababababababababababababababababab';
+    final seen = <NostrFilter>[];
+    var call = 0;
+    final repository = MkIdeasRepository(
+      community: 'hub.mkideas.test',
+      queryProjection: (filter) async {
+        seen.add(filter);
+        call += 1;
+        return RelayQueryPage(
+          events: [_operationEvent(call)],
+          nextCursor: call == 1 ? operationCursor : null,
+        );
+      },
+    );
+
+    final events = await repository.fetchAllOperations(pageSize: 1);
+
+    expect(events, hasLength(2));
+    expect(seen.first.extensions['mk_projection'], 'operations');
+    expect(seen.first.extensions.containsKey('mk_cursor'), isFalse);
+    expect(seen.last.extensions['mk_cursor'], operationCursor);
+    expect(seen.first.kinds, contains(EventKind.mkExternalCommunication));
   });
 }
 
@@ -123,6 +145,22 @@ NostrEvent _stateEvent(
     'title': 'Task $version',
     'source': 'test',
     'provenance': {'fixture': 'repository-test'},
+  }),
+  sig: 'sig',
+);
+
+NostrEvent _operationEvent(int index) => NostrEvent(
+  id: 'operation-$index',
+  pubkey: 'service',
+  createdAt: index,
+  kind: EventKind.mkSystemActivity,
+  tags: const [
+    ['h', 'hub.mkideas.test'],
+  ],
+  content: jsonEncode({
+    'schema_version': 2,
+    'activity_type': 'test',
+    'summary': 'Operation $index',
   }),
   sig: 'sig',
 );

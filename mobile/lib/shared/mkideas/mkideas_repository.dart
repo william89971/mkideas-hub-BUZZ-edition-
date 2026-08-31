@@ -1,10 +1,6 @@
 import '../relay/relay.dart';
 import 'mkideas_models.dart';
 
-/// Executes one signed-event query through Buzz's ordinary `/query` bridge.
-typedef MkEventQuery =
-    Future<List<NostrEvent>> Function(List<NostrFilter> filters);
-
 /// Executes one cursor-bearing MK projection query.
 typedef MkProjectionQuery = Future<RelayQueryPage> Function(NostrFilter filter);
 
@@ -23,10 +19,8 @@ class MkEntityHistoryPage {
 class MkIdeasRepository {
   const MkIdeasRepository({
     required this.community,
-    required MkEventQuery queryEvents,
     required MkProjectionQuery queryProjection,
-  }) : _queryEvents = queryEvents,
-       _queryProjection = queryProjection;
+  }) : _queryProjection = queryProjection;
 
   /// Builds the repository against an authenticated relay session.
   factory MkIdeasRepository.forRelay({
@@ -34,14 +28,12 @@ class MkIdeasRepository {
     required RelaySessionNotifier session,
   }) => MkIdeasRepository(
     community: community,
-    queryEvents: session.queryRelay,
     queryProjection: session.queryRelayPage,
   );
 
   /// Current community host selected by the app.
   final String community;
 
-  final MkEventQuery _queryEvents;
   final MkProjectionQuery _queryProjection;
 
   /// Loads every current shared head using the server's stable cursor.
@@ -123,9 +115,14 @@ class MkIdeasRepository {
     );
   }
 
-  /// Loads recent append-only operational events used by Today and agents.
-  Future<List<NostrEvent>> fetchRecentOperations({int limit = 200}) =>
-      _queryEvents([
+  /// Loads every append-only operational event using the stable relay cursor.
+  Future<List<NostrEvent>> fetchAllOperations({int pageSize = 200}) async {
+    final events = <NostrEvent>[];
+    final eventIds = <String>{};
+    String? cursor;
+    final seenCursors = <String>{};
+    do {
+      final page = await _queryProjection(
         NostrFilter(
           kinds: const [
             EventKind.mkApprovalAction,
@@ -133,11 +130,34 @@ class MkIdeasRepository {
             EventKind.mkMigrationReceipt,
             EventKind.mkGeneratedSummary,
             EventKind.mkSystemActivity,
+            EventKind.mkExternalCommunication,
           ],
           tags: {
             '#h': [community],
           },
-          limit: limit,
+          limit: pageSize,
+          extensions: {'mk_projection': 'operations', 'mk_cursor': ?cursor},
         ),
-      ]);
+      );
+      for (final event in page.events) {
+        if (event.getTagValue('h') != community) {
+          throw const FormatException(
+            'relay returned an MK operation outside the requested community',
+          );
+        }
+        if (!eventIds.add(event.id)) {
+          throw const FormatException(
+            'relay repeated an MK operation across pages',
+          );
+        }
+        events.add(event);
+      }
+      final next = page.nextCursor;
+      if (next != null && !seenCursors.add(next)) {
+        throw const FormatException('relay repeated an MK operation cursor');
+      }
+      cursor = next;
+    } while (cursor != null);
+    return List.unmodifiable(events);
+  }
 }

@@ -22,10 +22,11 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::migration_submit::{submit_dry_run, SubmitOptions};
+use crate::migration_submit::{
+    reconcile_destination, submit_dry_run, DestinationReconcileOptions, SubmitOptions,
+};
 
 const ARTIFACT_SCHEMA_VERSION: u32 = 1;
-const EXTERNAL_GATE_EXIT_CODE: i32 = 3;
 const RECONCILIATION_MISMATCH_EXIT_CODE: i32 = 4;
 const MAX_NDJSON_ROW_BYTES: usize = 4 * 1024 * 1024;
 
@@ -38,8 +39,15 @@ pub enum MigrationCommand {
         #[arg(long)]
         bundle: PathBuf,
     },
-    /// Export a legacy Command Center snapshot (external access gate).
-    Export,
+    /// Export a legacy Command Center snapshot through an explicit read-only configuration.
+    Export {
+        /// JSON file containing the source URL, workspace UUID, and optional media paths.
+        #[arg(long)]
+        source_config: PathBuf,
+        /// New directory that will receive manifest.json, tables, and attachments.
+        #[arg(long)]
+        output: PathBuf,
+    },
     /// Validate an existing bundle, identity mapping, and immutable plan.
     Plan {
         /// Directory containing manifest.json and its declared files.
@@ -69,6 +77,9 @@ pub enum MigrationCommand {
         /// Complete JSON emitted by `migration dry-run`.
         #[arg(long)]
         artifact: PathBuf,
+        /// Inspected export bundle containing media declared by the artifact.
+        #[arg(long)]
+        bundle: PathBuf,
         /// Explicit relay WebSocket URL; no environment fallback is used.
         #[arg(long)]
         relay: String,
@@ -87,6 +98,9 @@ pub enum MigrationCommand {
         /// Complete JSON emitted by `migration dry-run`.
         #[arg(long)]
         artifact: PathBuf,
+        /// Inspected export bundle containing media declared by the artifact.
+        #[arg(long)]
+        bundle: PathBuf,
         /// Existing non-secret checkpoint from `apply` or `resume`.
         #[arg(long)]
         checkpoint: PathBuf,
@@ -132,6 +146,15 @@ pub enum MigrationCommand {
         /// Existing migration report JSON.
         #[arg(long)]
         report: PathBuf,
+        /// Optional explicit relay URL for read-only destination receipt verification.
+        #[arg(long, requires = "service_key_file")]
+        relay: Option<String>,
+        /// Migration service secret-key file used only for relay authentication.
+        #[arg(long, requires = "relay")]
+        service_key_file: Option<PathBuf>,
+        /// Optional NIP-OA authorization tag for the migration service.
+        #[arg(long, requires = "relay")]
+        auth_tag_file: Option<PathBuf>,
     },
     /// Validate and summarize an existing migration report.
     Report {
@@ -141,8 +164,12 @@ pub enum MigrationCommand {
     },
 }
 
-/// Run one migration command without reading credentials or mutating either
-/// the source Command Center or a Buzz relay.
+/// Run one migration command.
+///
+/// Export reads only its explicit source configuration and opens a read-only
+/// source transaction. Apply/resume read only their explicit relay credential
+/// files. No command discovers credentials from the environment, and no
+/// command writes to the legacy Command Center.
 pub async fn run(command: MigrationCommand) -> Result<i32> {
     match command {
         MigrationCommand::Inspect { bundle } => {
@@ -160,9 +187,10 @@ pub async fn run(command: MigrationCommand) -> Result<i32> {
             }))?;
             Ok(0)
         }
-        MigrationCommand::Export => Ok(external_gate(
-            "export is not configured; no source database was contacted. An authorized, read-only Command Center snapshot and explicit source-access approval are required",
-        )),
+        MigrationCommand::Export {
+            source_config,
+            output,
+        } => crate::migration_export::export_legacy_snapshot(&source_config, &output).await,
         MigrationCommand::Plan {
             bundle,
             mapping,
@@ -192,6 +220,7 @@ pub async fn run(command: MigrationCommand) -> Result<i32> {
         }
         MigrationCommand::Apply {
             artifact,
+            bundle,
             relay,
             service_key_file,
             auth_tag_file,
@@ -199,6 +228,7 @@ pub async fn run(command: MigrationCommand) -> Result<i32> {
         } => {
             submit_dry_run(SubmitOptions {
                 artifact,
+                bundle,
                 checkpoint: None,
                 relay,
                 service_key_file,
@@ -209,6 +239,7 @@ pub async fn run(command: MigrationCommand) -> Result<i32> {
         }
         MigrationCommand::Resume {
             artifact,
+            bundle,
             checkpoint,
             relay,
             service_key_file,
@@ -217,6 +248,7 @@ pub async fn run(command: MigrationCommand) -> Result<i32> {
         } => {
             submit_dry_run(SubmitOptions {
                 artifact,
+                bundle,
                 checkpoint: Some(checkpoint),
                 relay,
                 service_key_file,
@@ -253,15 +285,46 @@ pub async fn run(command: MigrationCommand) -> Result<i32> {
             mapping,
             plan,
             report,
+            relay,
+            service_key_file,
+            auth_tag_file,
         } => {
             let validated = validate_all_artifacts(&bundle, &mapping, &plan, &report)?;
-            let mismatches = reconciliation_mismatches(&validated);
+            let mut mismatches = reconciliation_mismatches(&validated);
+            let destination = match (relay.as_deref(), service_key_file.as_deref()) {
+                (Some(relay), Some(service_key_file)) => {
+                    let result = reconcile_destination(
+                        &validated.plan.plan,
+                        DestinationReconcileOptions {
+                            relay,
+                            service_key_file,
+                            auth_tag_file: auth_tag_file.as_deref(),
+                        },
+                    )
+                    .await?;
+                    mismatches.extend(result.mismatches);
+                    Some(json!({
+                        "relay": relay,
+                        "receipt_count": result.receipt_count,
+                        "checked": true
+                    }))
+                }
+                (None, None) => None,
+                _ => {
+                    return Err(anyhow!(
+                        "relay and service key file must be supplied together"
+                    ))
+                }
+            };
+            mismatches.sort();
+            mismatches.dedup();
             let is_clean = mismatches.is_empty();
             print_json(json!({
                 "operation": "reconcile",
                 "valid": is_clean,
-                "offline_only": true,
-                "relay_checked": false,
+                "offline_only": destination.is_none(),
+                "relay_checked": destination.is_some(),
+                "destination": destination,
                 "batch_id": validated.plan.plan.batch_id,
                 "dataset_sha256": validated.plan.inspected.manifest.dataset_sha256,
                 "mismatches": mismatches
@@ -321,11 +384,6 @@ struct ValidatedPlanArtifacts {
 struct ValidatedAllArtifacts {
     plan: ValidatedPlanArtifacts,
     report: MigrationReport,
-}
-
-fn external_gate(message: &str) -> i32 {
-    eprintln!("external gate: {message}.");
-    EXTERNAL_GATE_EXIT_CODE
 }
 
 fn inspect_bundle(bundle: &Path) -> Result<InspectedBundle> {

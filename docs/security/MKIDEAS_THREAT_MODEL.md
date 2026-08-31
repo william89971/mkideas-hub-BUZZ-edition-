@@ -73,10 +73,10 @@ independent repository-wide security audit.
 - Production enrollment completion and a recovery exercise occur before
   enforcement is enabled. Enforcement is intentionally not enabled by code or
   configuration in this lane.
-- Revocation currently disconnects all live sessions for the human after the
-  durable grant update; unaffected devices may reconnect. Exact per-device
-  live-session termination remains client/session-registry work
-  (`crates/buzz-relay/src/device_security.rs:278`).
+- Revocation durably updates the grant and disconnects only live connections
+  authenticated with the exact human/device pair, including sessions on other
+  relay nodes through the existing connection-control channel. Unaffected
+  devices remain connected. Client inventory and recovery UX remain open.
 - Rate-limit keys and conservative defaults are defined, but Redis admission is
   not wired yet (`crates/buzz-relay/src/device_security.rs:62`).
 - Client enrollment, inventory, NIP-49 bundle creation, surviving-device
@@ -93,7 +93,7 @@ vulnerability findings.
 
 | Priority | Scenario and capability gain | Prerequisites | Impact | Existing controls | Mitigation / remaining work | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| High | A stolen enrolled device continues authenticating after its owner revokes it. | Attacker has device key and a prior valid grant. | Continued private workspace access and signed writes. | Exact active-grant lookup; durable revoke increments the auth epoch before cluster disconnect. | Add exact per-device session registry and complete client inventory/recovery UX before enforcement. | `crates/buzz-relay/src/device_security.rs:215`, `crates/buzz-relay/src/device_security.rs:278`, `crates/buzz-db/src/store/device_grants.rs:398` |
+| High | A stolen enrolled device continues authenticating after its owner revokes it. | Attacker has device key and a prior valid grant. | Continued private workspace access and signed writes. | Exact active-grant lookup; durable revoke increments the auth epoch; authenticated connections retain the device key; cluster control disconnects only the matching human/device pair. | Complete client inventory/recovery UX and exercise staged enforcement on real enrolled devices. | `crates/buzz-relay/src/device_security.rs`, `crates/buzz-relay/src/state.rs`, `crates/buzz-db/src/store/device_grants.rs` |
 | High | A valid proof is replayed against a different community, relay, challenge, human, or device. | Attacker observes or controls a signed proof. | Cross-community or stale-session authentication. | Payload equality, signatures, exact challenge digest, server-resolved community, and relay URL are validated; challenges are consumed transactionally. | Retain cross-community and replay conformance tests at every auth change. | `crates/buzz-core/src/mkideas_device.rs:164`, `crates/buzz-relay/src/device_security.rs:162`, `crates/buzz-db/src/store/device_grants.rs:152` |
 | High | A compromised service key impersonates a partner or approves/publishes protected state. | Runner/service key compromise. | Human-authority bypass or external action. | Physical-device bypass is limited to active owner-associated services; event writes remain capability checked. Relay ingest separately enforces service capabilities. | Rotate/revoke narrow grants, monitor unexpected persona/volume/community, retain proposal-only agent tests. | `crates/buzz-db/src/store/device_grants.rs:80`, `crates/buzz-relay/src/handlers/ingest.rs:548` |
 | High | A known grant, recovery, preference, or dedupe identifier is used across communities. | Member in one community knows another identifier. | Tenant data leakage or authorization bypass. | Community is part of table keys and query predicates; strict PostgreSQL integration test exercises two communities. | Extend the same result-level fence to media/search/session caches. | `migrations/0049_mkideas_device_security.sql:17`, `migrations/0049_mkideas_device_security.sql:37`, `migrations/0049_mkideas_device_security.sql:103`, `crates/buzz-db/tests/mkideas_device_security.rs:1` |
@@ -120,9 +120,10 @@ hour; these are scaffolding until Redis admission is connected.
 - PostgreSQL integration covers cross-community grant, inventory, recovery,
   preference, dedupe, and revocation behavior.
 - Relay tests cover the off/audit/enforce startup matrix, challenge/relay/
-  community proof binding, redacted rate keys, and fake provider boundaries.
-- Remaining production verification includes exact device-session termination,
-  Redis limits, malicious-media tests, log capture, dependency/secret scans,
+  community proof binding, exact device-session termination, redacted rate
+  keys, and fake provider boundaries.
+- Remaining production verification includes Redis limits, malicious-media
+  tests, log capture, dependency/secret scans,
   client enrollment/recovery, physical push delivery, and staged enforcement.
 
 ## 4. Severity Calibration (Critical, High, Medium, Low)

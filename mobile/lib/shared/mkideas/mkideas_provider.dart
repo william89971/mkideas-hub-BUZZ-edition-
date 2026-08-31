@@ -28,6 +28,7 @@ const _operationKinds = [
   EventKind.mkMigrationReceipt,
   EventKind.mkGeneratedSummary,
   EventKind.mkSystemActivity,
+  EventKind.mkExternalCommunication,
 ];
 
 String mkCommunityHost(String relayUrl) {
@@ -401,7 +402,7 @@ class MkIdeasNotifier extends AsyncNotifier<MkIdeasSnapshot> {
     );
     final results = await Future.wait([
       repository.fetchAllHeads(),
-      repository.fetchRecentOperations(),
+      repository.fetchAllOperations(),
     ]);
     return MkIdeasSnapshot.fromEvents([...results[0], ...results[1]]);
   }

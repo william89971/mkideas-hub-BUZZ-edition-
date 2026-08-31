@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildAtomicApprovalAction, fetchMkEntityHistoryPage } from "./api.ts";
+import {
+  buildAtomicApprovalAction,
+  fetchMkEntityHistoryPage,
+  fetchMkIdeasSnapshot,
+} from "./api.ts";
 
 const targetEventId = "1".repeat(64);
 const proposalEventId = "2".repeat(64);
@@ -135,4 +139,41 @@ test("entity history uses the history projection and preserves its cursor", asyn
   });
   assert.equal(response.records[0].version, 2);
   assert.equal(response.nextCursor, "1");
+});
+
+test("snapshot follows the stable operation cursor beyond one page", async () => {
+  const operationCursors = [];
+  let operationPage = 0;
+  const snapshot = await fetchMkIdeasSnapshot(
+    "wss://hub.test",
+    async (query) => {
+      if (query.projection === "heads") {
+        return { events: [], nextCursor: null };
+      }
+      assert.equal(query.projection, "operations");
+      operationCursors.push(query.cursor ?? null);
+      operationPage += 1;
+      return {
+        events: [
+          {
+            id: `${operationPage}`.repeat(64),
+            pubkey: "a".repeat(64),
+            created_at: operationPage,
+            kind: 48204,
+            tags: [["h", "hub.test"]],
+            content: JSON.stringify({
+              schema_version: 2,
+              activity_type: "test",
+              summary: `Operation ${operationPage}`,
+            }),
+            sig: "f".repeat(128),
+          },
+        ],
+        nextCursor: operationPage === 1 ? `1:${"1".repeat(64)}` : null,
+      };
+    },
+  );
+
+  assert.deepEqual(operationCursors, [null, `1:${"1".repeat(64)}`]);
+  assert.equal(snapshot.activities.length, 2);
 });

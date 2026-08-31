@@ -14057,7 +14057,7 @@ export function maybeInstallE2eTauriMocks() {
         const input = (
           payload as {
             input: {
-              projection: "heads" | "history";
+              projection: "heads" | "history" | "operations";
               kinds: number[];
               community: string;
               entityId?: string;
@@ -14105,6 +14105,31 @@ export function maybeInstallE2eTauriMocks() {
             nextCursor:
               history.length > page.length && lastVersion > 0
                 ? String(lastVersion)
+                : null,
+          };
+        }
+        if (input.projection === "operations") {
+          const [cursorCreatedAt, cursorEventId] =
+            input.cursor?.split(":") ?? [];
+          const cursorTimestamp = Number(cursorCreatedAt);
+          const ordered = matching
+            .filter(
+              (event) =>
+                !input.cursor ||
+                event.created_at < cursorTimestamp ||
+                (event.created_at === cursorTimestamp &&
+                  event.id.localeCompare(cursorEventId ?? "") > 0),
+            )
+            .sort(
+              (a, b) => b.created_at - a.created_at || a.id.localeCompare(b.id),
+            );
+          const page = ordered.slice(0, limit);
+          const last = page.at(-1);
+          return {
+            events: page,
+            nextCursor:
+              ordered.length > page.length && last
+                ? `${last.created_at}:${last.id}`
                 : null,
           };
         }

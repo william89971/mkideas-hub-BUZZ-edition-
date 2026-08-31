@@ -68,6 +68,18 @@ pub enum ConnControl {
         /// Human-readable close reason for the `OK` frame.
         reason: String,
     },
+    /// Disconnect one independently authenticated physical device while
+    /// leaving the human's other active devices connected.
+    DisconnectDevice {
+        /// Human Nostr identity bound to the grant.
+        human_pubkey: Vec<u8>,
+        /// Independent device public key bound to the revoked grant.
+        device_pubkey: Vec<u8>,
+        /// Id echoed in the closing `OK` frame.
+        event_id: String,
+        /// Human-readable close reason for the `OK` frame.
+        reason: String,
+    },
 }
 
 /// A connection-control command received from a community-scoped Redis channel.
@@ -225,5 +237,14 @@ mod tests {
         };
         let json = serde_json::to_string(&cmd).unwrap();
         assert_eq!(serde_json::from_str::<ConnControl>(&json).unwrap(), cmd);
+
+        let device = ConnControl::DisconnectDevice {
+            human_pubkey: vec![7u8; 32],
+            device_pubkey: vec![8u8; 32],
+            event_id: "def456".to_string(),
+            reason: "auth-required: this device was revoked".to_string(),
+        };
+        let json = serde_json::to_string(&device).unwrap();
+        assert_eq!(serde_json::from_str::<ConnControl>(&json).unwrap(), device);
     }
 }

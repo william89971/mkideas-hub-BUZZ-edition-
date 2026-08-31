@@ -324,19 +324,32 @@ services:
     security_opt: [no-new-privileges:true]
 
 secrets:
-  postgres_password: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/postgres_password }
-  redis_password: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/redis_password }
-  s3_access_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/s3_access_key }
-  s3_secret_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/s3_secret_key }
-  relay_private_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/relay_private_key }
-  agent_private_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/agent_private_key }
-  restic_password: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/restic_password }
-  backup_s3_access_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/backup_s3_access_key }
-  backup_s3_secret_key: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/backup_s3_secret_key }
-  push_grant_keys: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/push_grant_keys }
-  push_token_keys: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/push_token_keys }
-  apns_identity: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/apns_identity.pem }
-  app_attest_root: { file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/app_attest_root.pem }
+  postgres_password:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/postgres_password
+  redis_password:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/redis_password
+  s3_access_key:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/s3_access_key
+  s3_secret_key:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/s3_secret_key
+  relay_private_key:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/relay_private_key
+  agent_private_key:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/agent_private_key
+  restic_password:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/restic_password
+  backup_s3_access_key:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/backup_s3_access_key
+  backup_s3_secret_key:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/backup_s3_secret_key
+  push_grant_keys:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/push_grant_keys
+  push_token_keys:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/push_token_keys
+  apns_identity:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/apns_identity.pem
+  app_attest_root:
+    file: ${MKIDEAS_SECRETS_DIR:?set MKIDEAS_SECRETS_DIR}/app_attest_root.pem
 
 volumes:
   postgres-data:
