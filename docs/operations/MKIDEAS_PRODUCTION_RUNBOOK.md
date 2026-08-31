@@ -19,10 +19,31 @@ Before any first start:
    their immutable digests in `.env`.
 4. Generate deployment secrets and store offline recovery copies of the relay
    key and Restic password.
-5. Keep `BUZZ_PUSH_ENABLED=false`; do not create push secret files until APNs or
+5. Set `RELAY_OWNER_PUBKEY` to William's 64-character hexadecimal public key.
+   The production Compose profile requires REST token authentication and closed
+   relay membership, then bootstraps this key as owner. Never place William's
+   private key on the host.
+6. Keep `BUZZ_PUSH_ENABLED=false`; do not create push secret files until APNs or
    Firebase use is approved.
-6. Validate every Compose profile and verify the `.env` and `secrets/` paths are
+7. Validate every Compose profile and verify the `.env` and `secrets/` paths are
    readable only by the deployment operator.
+
+After the first healthy start, add each partner by their own public key with the
+maintenance CLI and the `member` role. Verify the resulting membership before
+giving the partner the relay URL; never use a shared login or a demo identity.
+
+```sh
+docker compose --env-file .env -f deploy/mkideas/compose.yml \
+  --profile maintenance run --rm admin \
+  add-member --pubkey <PARTNER_64_HEX_PUBLIC_KEY> --role member
+docker compose --env-file .env -f deploy/mkideas/compose.yml \
+  --profile maintenance run --rm admin list-members
+```
+
+The public HTTPS URL terminates the relay and invitation surface. The accepted
+five-area MK Ideas experience is in the native desktop and Flutter clients, so
+partner acceptance also requires a client build configured for the permanent
+relay URL. Do not represent the relay root page as the operational product UI.
 
 ## Startup ordering and health
 
