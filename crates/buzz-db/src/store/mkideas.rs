@@ -757,6 +757,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires Postgres; covered by the mkideas_phase1 integration suite"]
     async fn two_human_signers_cannot_both_advance_one_head() {
         let pool = setup_pool().await;
         let community = Uuid::new_v4();
