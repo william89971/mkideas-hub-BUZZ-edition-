@@ -1107,6 +1107,10 @@ jobs:
       contents: read
     env:
       TARGET: x86_64-pc-windows-msvc
+      # Keep native CMake/MSVC intermediates below Windows' effective path
+      # limits. The fork's repository slug makes Cargo's default target path
+      # too deep for audiopus_sys FileTracker logs (FTK1011).
+      CARGO_TARGET_DIR: C:/b
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       # MSVC needs windows.h (aws-lc-sys et al.), so this runs on a real Windows
