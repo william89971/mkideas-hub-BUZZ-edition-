@@ -8,6 +8,7 @@ import 'package:pointycastle/digests/sha256.dart';
 import 'package:uuid/uuid.dart';
 
 import '../relay/relay_provider.dart';
+import '../relay/device_session.dart';
 
 class MkDeviceGrant {
   const MkDeviceGrant({
@@ -147,8 +148,9 @@ class MkIdeasDeviceApi {
   Future<List<MkDeviceGrant>> listDevices() async {
     final result = await _request('/api/devices', method: 'GET');
     final devices = result['devices'];
-    if (devices is! List)
+    if (devices is! List) {
       throw const FormatException('Invalid device inventory.');
+    }
     return devices
         .map(
           (item) =>
@@ -181,10 +183,10 @@ class MkIdeasDeviceApi {
         'relay_url': challenge['relay_url'],
       }),
       tags: const [],
-      secretKey: deviceKeys.private,
+      secretKey: deviceKeys.secret,
       verify: false,
     );
-    await _request(
+    final enrollment = await _request(
       '/api/devices/enroll',
       method: 'POST',
       body: {
@@ -195,6 +197,23 @@ class MkIdeasDeviceApi {
         'device_proof': proof.toMap(),
       },
     );
+    final receiptKey = deviceSessionStorageKey(
+      _humanPubkey,
+      challenge['relay_url'] as String,
+    );
+    final receipt = jsonEncode({
+      'human_pubkey': _humanPubkey,
+      'relay_url': challenge['relay_url'],
+      'community_id': challenge['community_id'],
+      'grant_id': enrollment['grant_id'],
+      'key_storage': _deviceStorageKey,
+    });
+    await _secure.write(key: receiptKey, value: receipt);
+    if (await _secure.read(key: receiptKey) != receipt) {
+      throw StateError(
+        'Device enrollment receipt could not be verified in secure storage.',
+      );
+    }
   }
 
   Future<void> revoke(String grantId, String reason) async {

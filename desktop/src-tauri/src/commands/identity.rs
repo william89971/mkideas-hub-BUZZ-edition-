@@ -647,12 +647,18 @@ pub async fn create_auth_event(
     let keys = state.signing_keys()?;
 
     tauri::async_runtime::spawn_blocking(move || {
-        let tags = vec![
+        let mut tags = vec![
             Tag::parse(vec!["relay", &relay_url])
                 .map_err(|error| format!("relay tag failed: {error}"))?,
             Tag::parse(vec!["challenge", &challenge])
                 .map_err(|error| format!("challenge tag failed: {error}"))?,
         ];
+
+        if let Some(tag) =
+            super::mkideas_device::session_tag(&keys.public_key().to_hex(), &relay_url, &challenge)?
+        {
+            tags.push(tag);
+        }
 
         let event = EventBuilder::new(Kind::Custom(22242), "")
             .tags(tags)

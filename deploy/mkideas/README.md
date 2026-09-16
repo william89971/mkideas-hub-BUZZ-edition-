@@ -1,5 +1,10 @@
 # MK Ideas Buzz private deployment
 
+For downloadable phone apps, domain setup, server startup on boot, and the
+daily backup timer, see [the always-on guide](../../docs/operations/MKIDEAS_ALWAYS_ON.md).
+Run `node scripts/preflight.mjs` against the real deployment configuration
+before installing the systemd units in `systemd/`.
+
 This directory is the fork-owned, three-person production topology. It is a
 preparation artifact, not an active deployment. Nothing here purchases a host,
 changes DNS, connects an external account, publishes an app, or sends a message.

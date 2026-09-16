@@ -625,6 +625,15 @@ export async function signMkIdeasDeviceEvent(input: {
   return JSON.parse(eventJson) as RelayEvent;
 }
 
+export async function rememberMkIdeasDeviceGrant(input: {
+  scope: string;
+  communityId: string;
+  grantId: string;
+  relayUrl: string;
+}): Promise<void> {
+  await invokeTauri("remember_mkideas_device_grant", input);
+}
+
 export async function createAuthEvent(input: {
   challenge: string;
   relayUrl: string;

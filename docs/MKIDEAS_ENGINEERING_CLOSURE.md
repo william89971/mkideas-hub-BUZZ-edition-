@@ -8,6 +8,44 @@ Branch: `codex/mkideas-production-readiness`
 
 Baseline: `c89c57cf`
 
+## Latest macOS verification and launch preparation (2026-09-16)
+
+This section supersedes the historical Windows host limitations below.
+
+- Desktop and mobile enrollment now persist a scoped grant receipt. NIP-42
+  login attaches an independently device-signed proof bound to the human,
+  community, relay, and fresh challenge. Missing enrolled keys fail closed
+  instead of silently generating replacements. Devices enrolled by the older
+  build need receipt migration/re-enrollment handling before enforcement.
+- Fixed two mobile enrollment/settings compile errors missed by the prior
+  verification claim: the Nostr key property and the `AppListRow` import.
+  Current Flutter analysis is clean; all 191 relay/MK Ideas tests and 15
+  MK Ideas widget tests pass.
+- Fixed the upstream activity-badge smoke test to exercise the actual MK Ideas
+  sidebar instead of its removed Agents menu. The test now passes.
+- Added Linux startup-on-boot and daily encrypted-backup systemd units,
+  immutable infrastructure image overrides, and a deployment preflight with
+  three passing regression tests. Alertmanager now has external egress.
+- Desktop native compile and E2E build passed. These are local checks, not
+  proof of signed phone distribution or a running production host.
+- Both native device-proof regression tests passed, including signature
+  verification and human/relay/challenge binding.
+- The mobile enrollment-to-login contract test passed with a mocked HTTP
+  transport, verified NIP-98/device signatures, and a secure-storage receipt.
+- Local phone packaging is currently blocked: `flutter doctor -v` reports
+  no Android SDK and an incomplete Xcode installation. No physical phone is
+  connected. GitHub Actions is enabled, but signed distribution credentials
+  and the production relay address have not been supplied.
+
+Remaining engineering: complete surviving-device and owner-successor recovery
+ceremonies; migrate existing enrollment receipts; close identity-key-only
+enrollment and all alternate authentication paths before enabling device
+enforcement. Keep the deployment in audit mode meanwhile. Signed phone builds,
+push delivery, production hosting, DNS/TLS, off-server restore, alert delivery,
+and partner acceptance still need their real accounts and environment.
+
+See [always-on deployment and downloadable apps](operations/MKIDEAS_ALWAYS_ON.md).
+
 ## Scope and boundaries
 
 This closure pass completed and verified the safe work that was locally

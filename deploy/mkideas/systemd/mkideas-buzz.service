@@ -1,0 +1,18 @@
+[Unit]
+Description=MK Ideas Buzz command center
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/mkideas/deploy/mkideas
+ExecStartPre=/usr/bin/node scripts/preflight.mjs
+ExecStart=/usr/bin/docker compose --env-file .env -f compose.yml --profile monitoring up -d --wait --wait-timeout 180
+ExecStop=/usr/bin/docker compose --env-file .env -f compose.yml --profile monitoring stop
+TimeoutStartSec=240
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

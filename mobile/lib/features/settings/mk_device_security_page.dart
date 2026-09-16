@@ -9,6 +9,7 @@ import '../../shared/mkideas/mkideas_device_api.dart';
 import '../../shared/relay/relay.dart';
 import '../../shared/theme/theme.dart';
 import '../../shared/widgets/app_list_card.dart';
+import '../../shared/widgets/app_list.dart';
 
 final mkDeviceInventoryProvider =
     FutureProvider.autoDispose<List<MkDeviceGrant>>((ref) async {

@@ -1,0 +1,11 @@
+[Unit]
+Description=Encrypted MK Ideas off-server backup
+Requires=mkideas-buzz.service
+After=mkideas-buzz.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/mkideas/deploy/mkideas
+ExecStart=/usr/bin/flock -n /run/lock/mkideas-backup.lock /bin/sh backup.sh
+TimeoutStartSec=2h
+UMask=0077

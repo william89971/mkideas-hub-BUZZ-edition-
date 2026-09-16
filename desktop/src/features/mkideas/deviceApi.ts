@@ -2,6 +2,7 @@ import { getIdentity } from "@/shared/api/tauriIdentity";
 import {
   ensureMkIdeasDeviceIdentity,
   getRelayHttpUrl,
+  rememberMkIdeasDeviceGrant,
   signMkIdeasDeviceEvent,
   signRelayEvent,
 } from "@/shared/api/tauri";
@@ -161,6 +162,12 @@ export async function enrollThisDevice(input: {
       platform: input.platform,
       device_proof: proof,
     },
+  });
+  await rememberMkIdeasDeviceGrant({
+    scope,
+    communityId: challenge.community_id,
+    grantId: result.grant_id,
+    relayUrl: challenge.relay_url,
   });
   return result.grant_id;
 }

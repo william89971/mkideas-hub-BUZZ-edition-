@@ -7,6 +7,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'nostr_models.dart';
+import 'device_session.dart';
 
 /// Low-level websocket connection with NIP-42 authentication.
 ///
@@ -49,6 +50,7 @@ class RelaySocket {
   Completer<void>? _authCompleter;
   Timer? _authTimeout;
   String? _pendingAuthEventId;
+  int _authChallengeGeneration = 0;
 
   SocketState get state => _state;
 
@@ -148,6 +150,7 @@ class RelaySocket {
   }
 
   void _resetConnection() {
+    _authChallengeGeneration++;
     _state = SocketState.disconnected;
     _subscription?.cancel();
     _subscription = null;
@@ -192,8 +195,9 @@ class RelaySocket {
   }
 
   /// Handle the relay's AUTH challenge: sign a kind:22242 event and respond.
-  void _handleAuthChallenge(List<dynamic> data) {
+  Future<void> _handleAuthChallenge(List<dynamic> data) async {
     if (data.length < 2) return;
+    final generation = ++_authChallengeGeneration;
     final challenge = data[1] as String;
 
     if (_nsec == null) {
@@ -215,6 +219,15 @@ class RelaySocket {
         ['challenge', challenge],
       ];
 
+      final channel = _channel;
+      final deviceTag = await deviceSessionTag(
+        human: nostr.Keys(privkeyHex).public,
+        relay: _wsUrl,
+        challenge: challenge,
+      );
+      if (channel != _channel || generation != _authChallengeGeneration) return;
+      if (deviceTag != null) tags.add(deviceTag);
+
       // Create and sign the kind:22242 AUTH event.
       final event = nostr.Event.from(
         kind: EventKind.auth,
@@ -226,6 +239,7 @@ class RelaySocket {
       _pendingAuthEventId = event.id;
       send(['AUTH', event.toMap()]);
     } catch (e) {
+      if (generation != _authChallengeGeneration) return;
       _failAuth(e);
     }
   }

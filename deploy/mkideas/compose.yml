@@ -2,7 +2,7 @@ name: ${COMPOSE_PROJECT_NAME:-mkideas-buzz}
 
 services:
   caddy:
-    image: caddy:2.10.2-alpine
+    image: ${MKIDEAS_CADDY_IMAGE:-caddy:2.10.2-alpine}
     environment:
       MKIDEAS_DOMAIN: ${MKIDEAS_DOMAIN:?set MKIDEAS_DOMAIN}
     ports:
@@ -31,6 +31,8 @@ services:
       RELAY_OWNER_PUBKEY: ${RELAY_OWNER_PUBKEY:?set William's 64-character hex public key}
       BUZZ_REQUIRE_AUTH_TOKEN: "true"
       BUZZ_REQUIRE_RELAY_MEMBERSHIP: "true"
+      BUZZ_MK_DEVICE_GRANTS: ${BUZZ_MK_DEVICE_GRANTS:-audit}
+      BUZZ_MK_DEVICE_GRANTS_ENROLLMENT_COMPLETE: ${BUZZ_MK_DEVICE_GRANTS_ENROLLMENT_COMPLETE:-false}
       POSTGRES_DB: ${POSTGRES_DB:-mkideas}
       POSTGRES_USER: ${POSTGRES_USER:-mkideas}
       BUZZ_S3_ENDPOINT: http://minio:9000
@@ -78,7 +80,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   postgres:
-    image: postgres:17.6-alpine
+    image: ${MKIDEAS_POSTGRES_IMAGE:-postgres:17.6-alpine}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mkideas}
       POSTGRES_USER: ${POSTGRES_USER:-mkideas}
@@ -97,7 +99,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   redis:
-    image: redis:7.4.5-alpine
+    image: ${MKIDEAS_REDIS_IMAGE:-redis:7.4.5-alpine}
     entrypoint: [/bin/sh, /opt/mkideas/redis-entrypoint.sh]
     volumes:
       - redis-data:/data
@@ -114,7 +116,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: ${MKIDEAS_MINIO_IMAGE:-minio/minio:RELEASE.2025-09-07T16-13-09Z}
     command: server /data --console-address :9001
     environment:
       MINIO_ROOT_USER_FILE: /run/secrets/s3_access_key
@@ -132,7 +134,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: ${MKIDEAS_MINIO_CLIENT_IMAGE:-minio/mc:RELEASE.2025-08-13T08-35-41Z}
     entrypoint: [/bin/sh, /opt/mkideas/minio-init.sh]
     environment:
       BUZZ_S3_BUCKET: ${BUZZ_S3_BUCKET:-mkideas-private-media}
@@ -212,7 +214,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   prometheus:
-    image: prom/prometheus:v3.6.0
+    image: ${MKIDEAS_PROMETHEUS_IMAGE:-prom/prometheus:v3.6.0}
     profiles: [monitoring]
     command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=30d]
     volumes:
@@ -228,7 +230,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   alertmanager:
-    image: prom/alertmanager:v0.28.1
+    image: ${MKIDEAS_ALERTMANAGER_IMAGE:-prom/alertmanager:v0.28.1}
     profiles: [monitoring]
     command: [--config.file=/etc/alertmanager/alertmanager.yml, --storage.path=/alertmanager]
     volumes:
@@ -236,11 +238,11 @@ services:
       - alertmanager-data:/alertmanager
     ports: ["${ALERTMANAGER_BIND:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"]
     restart: unless-stopped
-    networks: [private]
+    networks: [private, egress]
     security_opt: [no-new-privileges:true]
 
   blackbox:
-    image: prom/blackbox-exporter:v0.27.0
+    image: ${MKIDEAS_BLACKBOX_IMAGE:-prom/blackbox-exporter:v0.27.0}
     profiles: [monitoring]
     command: [--config.file=/etc/blackbox/blackbox.yml]
     volumes: [./blackbox.yml:/etc/blackbox/blackbox.yml:ro]
@@ -249,7 +251,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.17.1
+    image: ${MKIDEAS_POSTGRES_EXPORTER_IMAGE:-prometheuscommunity/postgres-exporter:v0.17.1}
     profiles: [monitoring]
     entrypoint: [/bin/sh, /opt/mkideas/postgres-exporter.sh]
     environment:
@@ -264,7 +266,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.67.0
+    image: ${MKIDEAS_REDIS_EXPORTER_IMAGE:-oliver006/redis_exporter:v1.67.0}
     profiles: [monitoring]
     entrypoint: [/bin/sh, /opt/mkideas/redis-exporter.sh]
     volumes: [./redis-exporter.sh:/opt/mkideas/redis-exporter.sh:ro]
@@ -276,7 +278,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   backup-database:
-    image: postgres:17.6-alpine
+    image: ${MKIDEAS_POSTGRES_IMAGE:-postgres:17.6-alpine}
     profiles: [maintenance]
     entrypoint: [/bin/sh, /opt/mkideas/backup-database.sh]
     environment:
@@ -293,7 +295,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   backup-media:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: ${MKIDEAS_MINIO_CLIENT_IMAGE:-minio/mc:RELEASE.2025-08-13T08-35-41Z}
     profiles: [maintenance]
     entrypoint: [/bin/sh, /opt/mkideas/backup-media.sh]
     environment:
@@ -309,7 +311,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   restic:
-    image: restic/restic:0.18.1
+    image: ${MKIDEAS_RESTIC_IMAGE:-restic/restic:0.18.1}
     profiles: [maintenance]
     entrypoint: [/bin/sh, /opt/mkideas/load-restic-secrets.sh]
     environment:

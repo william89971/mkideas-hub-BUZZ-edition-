@@ -34,11 +34,10 @@ async function waitForBridge(page: import("@playwright/test").Page) {
   );
 }
 
-async function openAgentsView(page: import("@playwright/test").Page) {
+async function openWorkspace(page: import("@playwright/test").Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForBridge(page);
-  await page.getByTestId("open-agents-view").click();
-  await expect(page.getByTestId("unified-agents-groups")).toBeVisible({
+  await expect(page.getByTestId("channel-general")).toBeVisible({
     timeout: 10_000,
   });
 }
@@ -57,16 +56,6 @@ async function seedTurns(
     };
     for (const seed of seeds) win.__BUZZ_E2E_SEED_ACTIVE_TURNS__?.(seed);
   }, turns);
-}
-
-async function openAgentProfile(
-  page: import("@playwright/test").Page,
-  pubkey: string,
-) {
-  await page.getByTestId(`managed-agent-${pubkey}`).click();
-  const panel = page.getByTestId("user-profile-panel");
-  await expect(panel).toBeVisible({ timeout: 5_000 });
-  return panel;
 }
 
 test.describe("active turn badge resilience", () => {
@@ -96,7 +85,7 @@ test.describe("active turn badge resilience", () => {
     });
     await page.clock.install({ time: T0 });
 
-    await openAgentsView(page);
+    await openWorkspace(page);
 
     // Both agents working across channels — the healthy multi-agent state.
     await seedTurns(page, [
@@ -117,13 +106,8 @@ test.describe("active turn badge resilience", () => {
       },
     ]);
 
-    const paulPanel = await openAgentProfile(page, AGENT_PAUL);
-    await expect(paulPanel).toBeVisible();
-
-    // The profile panel surfaces active turns via the live-activity embed only
-    // where an agent session can open (channel surfaces). In the Agents view
-    // the store-driven working state shows as sidebar channel badges — the
-    // same activeAgentTurnsStore this test exercises.
+    // MK Ideas opens on Today; the channel sidebar exposes the active-turn
+    // state without navigating through the upstream Agents menu.
     const generalBadge = page.getByTestId("channel-working-general");
     const engineeringBadge = page.getByTestId("channel-working-engineering");
     await expect(generalBadge).toBeVisible({ timeout: 5_000 });

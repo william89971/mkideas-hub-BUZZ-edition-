@@ -607,6 +607,7 @@ pub fn run() {
             sign_event,
             ensure_mkideas_device_identity,
             sign_mkideas_device_event,
+            remember_mkideas_device_grant,
             sign_nostr_identity_binding,
             sign_out,
             decrypt_observer_event,
