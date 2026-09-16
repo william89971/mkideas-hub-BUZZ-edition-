@@ -2,7 +2,7 @@ import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Plus, Upload } from "lucide-react";
 
-import { publishMkState } from "../api";
+import { publishOrQueueMkState } from "../offlineStore";
 import type {
   MkActivity,
   MkAgentProposal,
@@ -63,7 +63,7 @@ export function StudioArea({
   }, [guestId, people]);
   const createInterview = useMutation({
     mutationFn: () =>
-      publishMkState(relayUrl, {
+      publishOrQueueMkState(relayUrl, {
         kind: KIND_MK_INTERVIEW,
         recordType: "interview",
         status: "planning",
@@ -82,7 +82,7 @@ export function StudioArea({
     if (!media) return;
     const filename = media.filename ?? "transcript";
     const format = filename.split(".").at(-1)?.toLowerCase() ?? "text";
-    await publishMkState(relayUrl, {
+    await publishOrQueueMkState(relayUrl, {
       kind: KIND_MK_INTERVIEW,
       recordType: "interview",
       previous: record,
@@ -116,7 +116,7 @@ export function StudioArea({
     await queryClient.invalidateQueries({ queryKey });
   };
   const createContent = async (interview: MkRecord) => {
-    await publishMkState(relayUrl, {
+    await publishOrQueueMkState(relayUrl, {
       kind: KIND_MK_CONTENT,
       recordType: "content",
       status: "in-review",

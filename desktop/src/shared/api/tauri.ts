@@ -604,6 +604,27 @@ export async function signRelayEvent(input: {
   return JSON.parse(eventJson) as RelayEvent;
 }
 
+export async function ensureMkIdeasDeviceIdentity(
+  scope: string,
+): Promise<string> {
+  return invokeTauri<string>("ensure_mkideas_device_identity", { scope });
+}
+
+export async function signMkIdeasDeviceEvent(input: {
+  scope: string;
+  kind: number;
+  content: string;
+  tags?: string[][];
+}): Promise<RelayEvent> {
+  const eventJson = await invokeTauri<string>("sign_mkideas_device_event", {
+    scope: input.scope,
+    kind: input.kind,
+    content: input.content,
+    tags: input.tags ?? [],
+  });
+  return JSON.parse(eventJson) as RelayEvent;
+}
+
 export async function createAuthEvent(input: {
   challenge: string;
   relayUrl: string;

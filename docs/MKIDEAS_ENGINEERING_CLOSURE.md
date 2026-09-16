@@ -1,10 +1,12 @@
 # MK Ideas Buzz Engineering Closure
 
-Date: 2026-08-31
+Original closure date: 2026-08-31
 
-Branch: `codex/mkideas-buzz-v1`
+Local completion update: 2026-09-16
 
-Baseline: `b6137908809bfeb3253fb0498dfc6f58ad7bc911`
+Branch: `codex/mkideas-production-readiness`
+
+Baseline: `c89c57cf`
 
 ## Scope and boundaries
 
@@ -34,8 +36,8 @@ store, or entity-specific HTTP API.
 | Migration export, dry-run, plan, apply/resume, media, and destination reconciliation | PASS — EXTERNAL VALIDATION STILL REQUIRED | Export is read-only/repeatable-read and secret-excluding; apply uses existing Blossom and relay paths; reconciliation pages signed receipts. Two synthetic runs produced the same hash with 39 units, one media descriptor, and no duplicates or failures. Production snapshot access and cutoff are not authorized. |
 | Local Compose syntax and relay-backed services | PASS | Compose rendered for every profile. Disposable PostgreSQL, Redis, MinIO, and relay services reached readiness and ran the relay-backed tests. No production infrastructure was changed. |
 | PostgreSQL backup and isolated restore | PASS — EXTERNAL VALIDATION STILL REQUIRED | A custom-format dump restored into a separate disposable database. All 77 public tables and representative record counts matched. Off-server encrypted storage, media recovery, and a production restore exercise remain external. |
-| Desktop/mobile durable offline cache, outbox, and conflict-resolution UI | FAIL | The shared-head and version foundations exist, but complete durable queued writes, preserved rejected drafts, replay state, and explicit reapply/discard UI are not implemented on both clients. This is a local engineering gap, not a host blocker. |
-| Complete client device enrollment, inventory, renewal, recovery, NIP-49, and successor UI | FAIL | Relay/database grant, recovery, bundle, successor, and exact revocation foundations exist. Complete desktop/mobile lifecycle surfaces and end-to-end recovery ceremonies remain unfinished. This is a local engineering gap, not a host blocker. |
+| Desktop/mobile durable offline cache, outbox, and conflict-resolution UI | PASS — RUNTIME ACCEPTANCE STILL REQUIRED | Both clients cache the last relay snapshot, persist the exact signed event before publishing, retry queued events after reconnect, preserve conflicts, and expose explicit reapply/discard controls. Unit, type, format, and analyzer checks pass; physical-device offline/reconnect acceptance remains external. |
+| Client device enrollment, inventory, revocation, and NIP-49 backup/restore | PASS — ENFORCEMENT ROLLOUT STILL REQUIRED | Desktop and mobile now generate independent device keys in secure storage, use a short-lived hash-bound two-key challenge, list grant history, and revoke with an explicit reason. Existing NIP-49 creation, testing, and restore remain the identity-recovery path. The surviving-device replacement and owner-attributed successor ceremonies are still server foundations only and must be completed before switching `BUZZ_MK_DEVICE_GRANTS` from audit to enforce. |
 | APNs/FCM delivery | BLOCKED — EXTERNAL CREDENTIAL/HARDWARE | Fake/local contracts remain testable, but provider accounts, credentials, profiles, and physical devices were not available or authorized. |
 | Flutter analysis, tests, and Android runtime | BLOCKED — EXTERNAL CREDENTIAL/HARDWARE | Changed Dart files pass formatting in the pinned Dart 3.11 container. The host has no functional Flutter SDK, Android SDK/emulator, or ADB, so Flutter analysis/tests and runtime evidence could not run. |
 | macOS/iOS runtime and signing | BLOCKED — EXTERNAL CREDENTIAL/HARDWARE | Windows has no Xcode/macOS environment, Apple signing account, or physical iPhone acceptance environment. |
@@ -77,8 +79,8 @@ Apple-only and Android-runtime checks remain limited to their platform lanes.
 
 The existing MK Ideas architecture, desktop operating experience, shared
 relay state, pagination, agents, and migration path are materially hardened
-and relay-backed. The closure plan is not fully complete: durable cross-client
-offline/conflict UX and complete client device-management/recovery UX remain
-real local engineering failures. External validation gates also remain for
-mobile platforms, signing, push, production infrastructure/data, partner
-acceptance, hosted AI, and cutoff.
+and relay-backed. The locally achievable offline/conflict and core
+device-management gaps are closed. Production is still gated on a rehearsed
+device-enforcement/recovery rollout plus the external mobile, signing, push,
+infrastructure, data, partner-acceptance, hosted-AI, and cutoff work listed
+above.

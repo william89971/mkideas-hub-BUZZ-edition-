@@ -2,7 +2,7 @@ import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 
-import { publishMkState } from "../api";
+import { publishOrQueueMkState } from "../offlineStore";
 import type { MkActivity, MkAgentProposal, MkRecord } from "../model";
 import { KIND_MK_PERSON } from "@/shared/constants/kinds";
 import { Button } from "@/shared/ui/button";
@@ -35,7 +35,7 @@ export function PeopleArea({
   const [why, setWhy] = React.useState("");
   const mutation = useMutation({
     mutationFn: () =>
-      publishMkState(relayUrl, {
+      publishOrQueueMkState(relayUrl, {
         kind: KIND_MK_PERSON,
         recordType: "person",
         status: "prospect",

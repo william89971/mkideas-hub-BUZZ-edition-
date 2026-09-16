@@ -605,6 +605,8 @@ pub fn run() {
             connect_acp_runtime,
             discover_managed_agent_prereqs,
             sign_event,
+            ensure_mkideas_device_identity,
+            sign_mkideas_device_event,
             sign_nostr_identity_binding,
             sign_out,
             decrypt_observer_event,

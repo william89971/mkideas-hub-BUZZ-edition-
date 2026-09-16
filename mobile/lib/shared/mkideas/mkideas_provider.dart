@@ -9,10 +9,12 @@ import '../relay/nostr_models.dart';
 import '../relay/relay_provider.dart';
 import '../relay/relay_session.dart';
 import '../relay/signed_event_relay.dart';
+import '../theme/theme_provider.dart';
 import 'mkideas_models.dart';
 import 'mkideas_agent_models.dart';
 import 'mkideas_approval_models.dart';
 import 'mkideas_media_models.dart';
+import 'mkideas_offline_store.dart';
 import 'mkideas_repository.dart';
 
 export 'mkideas_agent_models.dart';
@@ -50,6 +52,7 @@ class MkIdeasSnapshot {
     required this.agentRunsById,
     required this.summariesById,
     this.syncIssue,
+    this.outbox = const [],
   });
 
   final Map<MkEntityCoordinate, MkRecord> headsByCoordinate;
@@ -59,6 +62,7 @@ class MkIdeasSnapshot {
   final Map<String, MkAgentRun> agentRunsById;
   final Map<String, MkGeneratedSummary> summariesById;
   final String? syncIssue;
+  final List<MkOutboxEntry> outbox;
 
   static const empty = MkIdeasSnapshot._(
     headsByCoordinate: {},
@@ -218,6 +222,7 @@ class MkIdeasSnapshot {
           agentRunsById: agentRunsById,
           summariesById: summariesById,
           syncIssue: syncIssue,
+          outbox: outbox,
         );
       }
 
@@ -236,6 +241,7 @@ class MkIdeasSnapshot {
           agentRunsById: agentRunsById,
           summariesById: summariesById,
           syncIssue: syncIssue,
+          outbox: outbox,
         );
       }
 
@@ -257,6 +263,7 @@ class MkIdeasSnapshot {
           agentRunsById: agentRunsById,
           summariesById: summariesById,
           syncIssue: syncIssue,
+          outbox: outbox,
         );
       }
 
@@ -275,6 +282,7 @@ class MkIdeasSnapshot {
           agentRunsById: Map.unmodifiable(runs),
           summariesById: summariesById,
           syncIssue: syncIssue,
+          outbox: outbox,
         );
       }
 
@@ -293,6 +301,7 @@ class MkIdeasSnapshot {
           agentRunsById: agentRunsById,
           summariesById: Map.unmodifiable(summaries),
           syncIssue: syncIssue,
+          outbox: outbox,
         );
       }
     } catch (_) {
@@ -331,6 +340,7 @@ class MkIdeasSnapshot {
       agentRunsById: agentRunsById,
       summariesById: summariesById,
       syncIssue: syncIssue,
+      outbox: outbox,
     );
   }
 
@@ -342,6 +352,18 @@ class MkIdeasSnapshot {
     agentRunsById: agentRunsById,
     summariesById: summariesById,
     syncIssue: value,
+    outbox: outbox,
+  );
+
+  MkIdeasSnapshot withOutbox(List<MkOutboxEntry> value) => MkIdeasSnapshot._(
+    headsByCoordinate: headsByCoordinate,
+    revisionsByCoordinate: revisionsByCoordinate,
+    proposalsById: proposalsById,
+    approvalActionsById: approvalActionsById,
+    agentRunsById: agentRunsById,
+    summariesById: summariesById,
+    syncIssue: syncIssue,
+    outbox: List.unmodifiable(value),
   );
 }
 
@@ -380,16 +402,37 @@ bool _summaryIsNewer(MkGeneratedSummary next, MkGeneratedSummary previous) {
 class MkIdeasNotifier extends AsyncNotifier<MkIdeasSnapshot> {
   void Function()? _unsubscribe;
 
+  MkIdeasOfflineStore get _offlineStore =>
+      MkIdeasOfflineStore(ref.read(savedPrefsProvider));
+
+  ({String relayUrl, String pubkey}) _offlineScope(RelayConfig config) {
+    final pubkey = SignedEventRelay(
+      session: ref.read(relaySessionProvider.notifier),
+      nsec: config.nsec,
+    ).pubkey;
+    if (pubkey == null) {
+      throw StateError('MK Ideas requires a signing identity.');
+    }
+    return (relayUrl: config.wsUrl, pubkey: pubkey);
+  }
+
   @override
   Future<MkIdeasSnapshot> build() async {
     final config = ref.watch(relayConfigProvider);
     ref.onDispose(() => _unsubscribe?.call());
     final snapshotStartedAt = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 1;
-    final snapshot = await _fetch(config);
+    final scope = _offlineScope(config);
+    final outbox = _offlineStore.readOutbox(scope.relayUrl, scope.pubkey);
+    var snapshot = await _fetch(config);
+    for (final entry in outbox) {
+      snapshot = snapshot.applying(entry.event);
+    }
+    snapshot = snapshot.withOutbox(outbox);
     unawaited(
-      Future<void>.delayed(
-        Duration.zero,
-      ).then((_) => _subscribe(config, since: snapshotStartedAt)),
+      Future<void>.delayed(Duration.zero).then((_) async {
+        await _subscribe(config, since: snapshotStartedAt);
+        await retryOutbox();
+      }),
     );
     return snapshot;
   }
@@ -400,11 +443,22 @@ class MkIdeasNotifier extends AsyncNotifier<MkIdeasSnapshot> {
       community: mkCommunityHost(config.wsUrl),
       session: session,
     );
-    final results = await Future.wait([
-      repository.fetchAllHeads(),
-      repository.fetchAllOperations(),
-    ]);
-    return MkIdeasSnapshot.fromEvents([...results[0], ...results[1]]);
+    final scope = _offlineScope(config);
+    try {
+      final results = await Future.wait([
+        repository.fetchAllHeads(),
+        repository.fetchAllOperations(),
+      ]);
+      final events = [...results[0], ...results[1]];
+      await _offlineStore.writeCache(scope.relayUrl, scope.pubkey, events);
+      return MkIdeasSnapshot.fromEvents(events);
+    } catch (error) {
+      final cached = _offlineStore.readCache(scope.relayUrl, scope.pubkey);
+      if (cached.isEmpty) rethrow;
+      return MkIdeasSnapshot.fromEvents(
+        cached,
+      ).withSyncIssue('Offline · showing saved MK Ideas state');
+    }
   }
 
   /// Loads one cursor-bearing history page and merges it into normalized state.
@@ -494,25 +548,125 @@ class MkIdeasNotifier extends AsyncNotifier<MkIdeasSnapshot> {
       session: ref.read(relaySessionProvider.notifier),
       nsec: config.nsec,
     );
-    NostrEvent? signed;
-    final acknowledgement = await relay.submit(
-      kind: type.kind,
-      tags: tags,
-      content: jsonEncode({
-        ...fields,
-        'schema_version': schemaVersion,
-        'record_type': type.wireName,
-        'entity_id': id,
-        'version': version,
-        'status': status.wireName,
-        'source': 'buzz-mobile',
-        'provenance': const {'authorship': 'human', 'client': 'buzz-mobile'},
-      }),
-      onSigned: (event) => signed = event,
+    final content = jsonEncode({
+      ...fields,
+      'schema_version': schemaVersion,
+      'record_type': type.wireName,
+      'entity_id': id,
+      'version': version,
+      'status': status.wireName,
+      'source': 'buzz-mobile',
+      'provenance': const {'authorship': 'human', 'client': 'buzz-mobile'},
+    });
+    final signed = relay.sign(kind: type.kind, tags: tags, content: content);
+    final scope = _offlineScope(config);
+    final now = DateTime.now().toUtc();
+    var entry = MkOutboxEntry(
+      id: signed.id,
+      relayUrl: scope.relayUrl,
+      event: signed,
+      type: type,
+      status: status.wireName,
+      fields: Map<String, dynamic>.from(fields),
+      entityId: id,
+      previousEventId: previous?.eventId,
+      createdAt: now,
+      updatedAt: now,
     );
-    final published = signed ?? acknowledgement;
-    _applyLiveEvent(published);
-    return published;
+    await _offlineStore.put(scope.relayUrl, scope.pubkey, entry);
+    _applyLiveEvent(signed);
+    await _refreshOutbox(config);
+    try {
+      final published = await relay.publishSigned(signed);
+      await _offlineStore.remove(scope.relayUrl, scope.pubkey, signed.id);
+      await _refreshOutbox(config);
+      return published;
+    } catch (error) {
+      entry = entry.copyWith(
+        attempts: 1,
+        conflicted: isMkOutboxConflict(error),
+        updatedAt: DateTime.now().toUtc(),
+        error: error.toString(),
+      );
+      await _offlineStore.put(scope.relayUrl, scope.pubkey, entry);
+      await _refreshOutbox(config);
+      return signed;
+    }
+  }
+
+  Future<void> _refreshOutbox(RelayConfig config) async {
+    final current = state.value;
+    if (current == null) return;
+    final scope = _offlineScope(config);
+    state = AsyncData(
+      current.withOutbox(
+        _offlineStore.readOutbox(scope.relayUrl, scope.pubkey),
+      ),
+    );
+  }
+
+  /// Retries signed queued writes in order and stops at the first connection
+  /// failure. Conflicts remain preserved for explicit human review.
+  Future<void> retryOutbox() async {
+    final config = ref.read(relayConfigProvider);
+    final scope = _offlineScope(config);
+    final relay = SignedEventRelay(
+      session: ref.read(relaySessionProvider.notifier),
+      nsec: config.nsec,
+    );
+    for (var entry in _offlineStore.readOutbox(scope.relayUrl, scope.pubkey)) {
+      if (entry.conflicted) continue;
+      try {
+        await relay.publishSigned(entry.event);
+        await _offlineStore.remove(scope.relayUrl, scope.pubkey, entry.id);
+      } catch (error) {
+        entry = entry.copyWith(
+          attempts: entry.attempts + 1,
+          conflicted: isMkOutboxConflict(error),
+          updatedAt: DateTime.now().toUtc(),
+          error: error.toString(),
+        );
+        await _offlineStore.put(scope.relayUrl, scope.pubkey, entry);
+        if (!entry.conflicted) break;
+      }
+    }
+    await _refreshOutbox(config);
+  }
+
+  /// Discards one preserved local draft after explicit human confirmation.
+  Future<void> discardOutboxEntry(String id) async {
+    final config = ref.read(relayConfigProvider);
+    final scope = _offlineScope(config);
+    await _offlineStore.remove(scope.relayUrl, scope.pubkey, id);
+    await _refreshOutbox(config);
+  }
+
+  /// Re-signs a conflicted draft against the latest shared head.
+  Future<void> reapplyOutboxEntry(MkOutboxEntry entry) async {
+    final config = ref.read(relayConfigProvider);
+    final scope = _offlineScope(config);
+    final current = state.value ?? MkIdeasSnapshot.empty;
+    final latest =
+        current.headsByCoordinate[MkEntityCoordinate(
+          type: entry.type,
+          entityId: entry.entityId,
+        )];
+    try {
+      await _publishState(
+        type: entry.type,
+        status: _statusFor(entry.type, entry.status),
+        fields: entry.fields,
+        entityId: entry.entityId,
+        previous: latest,
+      );
+      await _offlineStore.remove(scope.relayUrl, scope.pubkey, entry.id);
+      await _refreshOutbox(config);
+    } catch (_) {
+      // Keep the original conflicted draft if a replacement cannot be signed.
+      await _offlineStore.put(scope.relayUrl, scope.pubkey, entry);
+      await _refreshOutbox(config);
+      rethrow;
+    }
   }
 
   Future<void> createEntity({
@@ -813,6 +967,13 @@ void _addRelationshipTags(
       fields['proposal_event_id'] as String,
     ]);
   }
+}
+
+MkStatusValue _statusFor(MkEntityType type, String wireName) {
+  for (final status in type.statuses) {
+    if (status.wireName == wireName) return status;
+  }
+  throw FormatException('Unknown ${type.wireName} status: $wireName');
 }
 
 final mkIdeasProvider = AsyncNotifierProvider<MkIdeasNotifier, MkIdeasSnapshot>(

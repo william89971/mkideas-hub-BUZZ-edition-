@@ -105,8 +105,9 @@ async fn device_and_notification_state_is_strictly_community_scoped() {
     .await
     .expect("create challenge in A");
 
-    let enroll = |challenge_id| MkDeviceEnrollmentInput {
+    let enroll = |challenge_id, challenge_hash| MkDeviceEnrollmentInput {
         challenge_id,
+        challenge_hash,
         human_pubkey: &human,
         device_pubkey: &device,
         device_name: "Test Windows PC",
@@ -115,12 +116,17 @@ async fn device_and_notification_state_is_strictly_community_scoped() {
         device_proof_event_id: &device_proof,
     };
     assert!(matches!(
-        db.enroll_mkideas_device(community_b, enroll(challenge_id))
+        db.enroll_mkideas_device(community_b, enroll(challenge_id, &[1; 32]))
+            .await,
+        Err(DbError::AccessDenied(_))
+    ));
+    assert!(matches!(
+        db.enroll_mkideas_device(community_a, enroll(challenge_id, &[9; 32]))
             .await,
         Err(DbError::AccessDenied(_))
     ));
     let grant_id = db
-        .enroll_mkideas_device(community_a, enroll(challenge_id))
+        .enroll_mkideas_device(community_a, enroll(challenge_id, &[1; 32]))
         .await
         .expect("enroll in A");
     assert_eq!(

@@ -121,6 +121,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(api::invites::accept_policy),
         )
         .route("/api/invites/claim", post(api::invites::claim_invite))
+        // MK Ideas device lifecycle: tenant-bound NIP-98 plus two-key proof.
+        .route(
+            "/api/devices/enrollment-challenges",
+            post(api::device_security::create_challenge),
+        )
+        .route("/api/devices/enroll", post(api::device_security::enroll))
+        .route("/api/devices", get(api::device_security::inventory))
+        .route("/api/devices/revoke", post(api::device_security::revoke))
         // Moderation queue reads (NIP-98 auth + mod-authz gate, L6)
         .route("/moderation/reports", get(api::bridge::moderation_reports))
         .route("/moderation/audit", get(api::bridge::moderation_audit))

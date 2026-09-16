@@ -59,6 +59,8 @@ pub enum MkDeviceGrantStatus {
 pub struct MkDeviceEnrollmentInput<'a> {
     /// Server-issued challenge identifier.
     pub challenge_id: Uuid,
+    /// SHA-256 of the plaintext challenge proven by both signing keys.
+    pub challenge_hash: &'a [u8],
     /// Expected human public key.
     pub human_pubkey: &'a [u8],
     /// Expected device public key.
@@ -159,13 +161,14 @@ impl Db {
             r#"
             SELECT human_pubkey, device_pubkey
             FROM mk_device_enrollment_challenges
-            WHERE id = $1 AND community_id = $2
+            WHERE id = $1 AND community_id = $2 AND challenge_hash = $3
               AND consumed_at IS NULL AND expires_at > now()
             FOR UPDATE
             "#,
         )
         .bind(input.challenge_id)
         .bind(community.as_uuid())
+        .bind(input.challenge_hash)
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| DbError::AccessDenied("invalid or expired device challenge".into()))?;

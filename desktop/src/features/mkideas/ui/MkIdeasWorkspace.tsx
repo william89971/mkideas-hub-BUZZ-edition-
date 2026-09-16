@@ -3,6 +3,7 @@ import { communityHost } from "../model";
 import { EmptyState, type MkIdeasArea } from "./MkIdeasPrimitives";
 import { PeopleArea } from "./PeopleArea";
 import { QuickCapture } from "./QuickCapture";
+import { MkIdeasSyncPanel } from "./MkIdeasSyncPanel";
 import { StudioArea } from "./StudioArea";
 import { TeamArea } from "./TeamArea";
 import { TodayArea } from "./TodayArea";
@@ -11,7 +12,8 @@ import { WorkArea } from "./WorkArea";
 export type { MkIdeasArea } from "./MkIdeasPrimitives";
 
 export function MkIdeasWorkspace({ area }: { area: MkIdeasArea }) {
-  const { query, queryKey, relayUrl } = useMkIdeasSnapshot();
+  const { query, queryKey, relayUrl, pubkey, outbox, cachedAt } =
+    useMkIdeasSnapshot();
   const snapshot = query.data ?? {
     records: [],
     proposals: [],
@@ -37,6 +39,17 @@ export function MkIdeasWorkspace({ area }: { area: MkIdeasArea }) {
         <div className="mb-5 flex justify-end">
           <QuickCapture area={area} queryKey={queryKey} relayUrl={relayUrl} />
         </div>
+        <MkIdeasSyncPanel
+          cachedAt={cachedAt}
+          isFetchError={query.isError}
+          onChanged={async () => {
+            await query.refetch();
+          }}
+          outbox={outbox}
+          pubkey={pubkey}
+          records={snapshot.records}
+          relayUrl={relayUrl}
+        />
         {query.isLoading ? (
           <p className="text-sm text-muted-foreground">
             Loading shared MK Ideas state…

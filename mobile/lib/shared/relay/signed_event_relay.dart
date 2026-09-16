@@ -36,6 +36,28 @@ class SignedEventRelay {
     int? createdAt,
     void Function(NostrEvent event)? onSigned,
   }) async {
+    final nostrEvent = sign(
+      kind: kind,
+      content: content,
+      tags: tags,
+      createdAt: createdAt,
+    );
+    onSigned?.call(nostrEvent);
+    return publishSigned(nostrEvent);
+  }
+}
+
+/// Durable-outbox operations kept as an extension so existing relay test
+/// doubles do not need to implement methods they never exercise.
+extension SignedEventRelayOutbox on SignedEventRelay {
+  /// Signs an event without sending it so an outbox can persist the exact
+  /// bytes before attempting network delivery.
+  NostrEvent sign({
+    required int kind,
+    required String content,
+    required List<List<String>> tags,
+    int? createdAt,
+  }) {
     final nsec = _nsec;
     if (nsec == null || nsec.isEmpty) {
       throw Exception('Cannot submit event: no signing key available');
@@ -55,10 +77,11 @@ class SignedEventRelay {
       verify: false,
     );
 
-    final nostrEvent = NostrEvent.fromJson(event.toMap());
-    onSigned?.call(nostrEvent);
-    return _session.publish(nostrEvent);
+    return NostrEvent.fromJson(event.toMap());
   }
+
+  /// Publishes an already signed event, preserving its event id across retries.
+  Future<NostrEvent> publishSigned(NostrEvent event) => _session.publish(event);
 }
 
 /// Publishes one signed event over a short-lived authenticated NIP-42 socket.

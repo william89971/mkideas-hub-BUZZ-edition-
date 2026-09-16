@@ -2,9 +2,9 @@
 //!
 //! Enforcement defaults to [`DeviceGrantMode::Off`]. `Enforce` cannot be
 //! selected accidentally: startup requires closed membership, a configured
-//! owner, and an explicit enrollment-complete acknowledgement. This module
-//! intentionally exposes no enrollment HTTP endpoint; clients first need the
-//! versioned two-key proof flow in `buzz-core` and locally enrolled grants.
+//! owner, and an explicit enrollment-complete acknowledgement. Enrollment is
+//! exposed through a tenant-bound, replay-protected NIP-98 control plane whose
+//! versioned payload also requires an independent device-key signature.
 
 use nostr::{Event, Kind, PublicKey};
 use serde::{Deserialize, Serialize};

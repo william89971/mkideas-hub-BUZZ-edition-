@@ -2,7 +2,7 @@ import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 
-import { publishMkState } from "../api";
+import { publishOrQueueMkState } from "../offlineStore";
 import {
   MK_RECORD_KIND_BY_TYPE,
   type MkRecordStatus,
@@ -92,7 +92,7 @@ export function QuickCapture({
                     }
                   : {}),
               };
-      return publishMkState(relayUrl, {
+      return publishOrQueueMkState(relayUrl, {
         kind: MK_RECORD_KIND_BY_TYPE[captureType],
         recordType: captureType as MkRecordType,
         status: INITIAL_STATUS[captureType],

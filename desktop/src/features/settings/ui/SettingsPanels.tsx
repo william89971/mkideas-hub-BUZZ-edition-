@@ -9,6 +9,7 @@ import {
   Download,
   FlaskConical,
   Keyboard,
+  Laptop,
   LayoutTemplate,
   MessagesSquare,
   MonitorCog,
@@ -80,9 +81,11 @@ import { ProfileSettingsCard } from "./ProfileSettingsCard";
 import { UpdateChecker } from "../UpdateChecker";
 import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { VoiceSettingsCard } from "./VoiceSettingsCard";
+import { DeviceSecuritySettingsCard } from "./DeviceSecuritySettingsCard";
 
 export type SettingsSection =
   | "profile"
+  | "devices"
   | "notifications"
   | "voice"
   | "experimental"
@@ -103,6 +106,7 @@ export const DEFAULT_SETTINGS_SECTION: SettingsSection = "profile";
 
 const SETTINGS_SECTION_VALUES: readonly SettingsSection[] = [
   "profile",
+  "devices",
   "notifications",
   "voice",
   "experimental",
@@ -160,6 +164,11 @@ export const settingsSections: SettingsSectionDescriptor[] = [
     value: "profile",
     label: "Profile",
     icon: UserRound,
+  },
+  {
+    value: "devices",
+    label: "Devices & recovery",
+    icon: Laptop,
   },
   {
     value: "notifications",
@@ -811,6 +820,8 @@ export function renderSettingsSection(
           fallbackDisplayName={props.fallbackDisplayName}
         />
       );
+    case "devices":
+      return <DeviceSecuritySettingsCard />;
     case "notifications":
       return (
         <NotificationSettingsCard

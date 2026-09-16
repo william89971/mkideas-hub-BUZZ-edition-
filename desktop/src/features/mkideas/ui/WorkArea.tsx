@@ -2,7 +2,7 @@ import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Plus } from "lucide-react";
 
-import { publishMkState } from "../api";
+import { publishOrQueueMkState } from "../offlineStore";
 import {
   isMkStatusFor,
   MK_RECORD_KIND_BY_TYPE,
@@ -60,7 +60,7 @@ export function WorkArea({
 
   const create = useMutation({
     mutationFn: () =>
-      publishMkState(relayUrl, {
+      publishOrQueueMkState(relayUrl, {
         kind: MK_RECORD_KIND_BY_TYPE[createType],
         recordType: createType,
         status: INITIAL_STATUS[createType],
@@ -82,7 +82,7 @@ export function WorkArea({
       if (!isMkStatusFor(record.recordType, status)) {
         throw new Error("That status is not valid for this record.");
       }
-      return publishMkState(relayUrl, {
+      return publishOrQueueMkState(relayUrl, {
         kind: record.kind,
         recordType: record.recordType,
         previous: record,

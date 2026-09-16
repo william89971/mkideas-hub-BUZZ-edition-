@@ -43,6 +43,15 @@ export async function fetchMkIdeasSnapshot(
   relayUrl: string,
   projectionTransport: MkProjectionTransport = queryMkProjection,
 ): Promise<MkIdeasSnapshot> {
+  return parseMkIdeasEvents(
+    await fetchMkIdeasEvents(relayUrl, projectionTransport),
+  );
+}
+
+export async function fetchMkIdeasEvents(
+  relayUrl: string,
+  projectionTransport: MkProjectionTransport = queryMkProjection,
+): Promise<RelayEvent[]> {
   const host = communityHost(relayUrl);
   const [heads, operations] = await Promise.all([
     collectMkProjection(
@@ -64,7 +73,7 @@ export async function fetchMkIdeasSnapshot(
       projectionTransport,
     ),
   ]);
-  return parseMkIdeasEvents([...heads, ...operations]);
+  return [...heads, ...operations];
 }
 
 export async function fetchMkEntityHistoryPage(
@@ -145,13 +154,13 @@ function appendTypedTags(
   }
 }
 
-export async function publishMkState(relayUrl: string, input: MkStateInput) {
+export async function signMkState(inputRelayUrl: string, input: MkStateInput) {
   const entityId =
     input.entityId ?? input.previous?.entityId ?? crypto.randomUUID();
   const version = (input.previous?.version ?? 0) + 1;
   const tags = [
     ["d", entityId],
-    ["h", communityHost(relayUrl)],
+    ["h", communityHost(inputRelayUrl)],
     ["version", String(version)],
     ["status", input.status],
   ];
@@ -177,7 +186,7 @@ export async function publishMkState(relayUrl: string, input: MkStateInput) {
       input.fields.proposal_event_id,
     ]);
   }
-  const event = await signRelayEvent({
+  return signRelayEvent({
     kind: input.kind,
     tags,
     content: JSON.stringify({
@@ -202,12 +211,19 @@ export async function publishMkState(relayUrl: string, input: MkStateInput) {
       status: input.status,
     }),
   });
+}
+
+export async function publishSignedMkState(event: RelayEvent) {
   await relayClient.publishEvent(
     event,
     "Timed out while saving MK Ideas work.",
     "MK Ideas could not save this change.",
   );
   return event;
+}
+
+export async function publishMkState(relayUrl: string, input: MkStateInput) {
+  return publishSignedMkState(await signMkState(relayUrl, input));
 }
 
 export type MkAtomicApprovalDecisionInput = {
